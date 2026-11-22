@@ -1,0 +1,44 @@
+name: Build AuxeGram APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        run: |
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018"
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+      - name: Patch app identity and API credentials
+        run: |
+          sed -i 's/public static int APP_ID = [0-9]*/public static int APP_ID = 17349/' TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java
+          sed -i 's/public static String APP_HASH = "[^"]*"/public static String APP_HASH = "344583e45741c457fe1862106095a5eb"/' TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java
+          chmod +x gradlew
+
+      - name: Build standalone APK
+        run: ./gradlew :TMessagesProj_AppStandalone:assembleAfatStandalone --no-daemon -POWPENGRAM_BUILD=0
+
+      - name: Collect APK
+        run: |
+          find TMessagesProj_AppStandalone/build/outputs -type f -name '*.apk' -exec cp {} auxegram.apk \;
+          ls -lh auxegram.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: auxegram
+          path: auxegram.apk

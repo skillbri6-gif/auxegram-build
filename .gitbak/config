@@ -1,0 +1,10 @@
+[core]
+	repositoryformatversion = 0
+	filemode = false
+	bare = false
+	logallrefupdates = true
+	symlinks = false
+	ignorecase = true
+[remote "origin"]
+	url = https://skillbri6-gif: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@github.com/skillbri6-gif/auxegram-build.git
+	fetch = +refs/heads/*:refs/remotes/origin/*
