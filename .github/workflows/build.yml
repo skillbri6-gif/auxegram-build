@@ -3,6 +3,9 @@ name: Build AuxeGram APK
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,7 +26,7 @@ jobs:
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018"
           echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-      - name: Patch app identity and API credentials
+      - name: Patch API credentials and make gradlew executable
         run: |
           sed -i 's/public static int APP_ID = [0-9]*/public static int APP_ID = 17349/' TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java
           sed -i 's/public static String APP_HASH = "[^"]*"/public static String APP_HASH = "344583e45741c457fe1862106095a5eb"/' TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java
@@ -32,13 +35,14 @@ jobs:
       - name: Build standalone APK
         run: ./gradlew :TMessagesProj_AppStandalone:assembleAfatStandalone --no-daemon -POWPENGRAM_BUILD=0
 
-      - name: Collect APK
+      - name: Commit APK to apk branch
         run: |
-          find TMessagesProj_AppStandalone/build/outputs -type f -name '*.apk' -exec cp {} auxegram.apk \;
+          APK=$(find TMessagesProj_AppStandalone/build/outputs -type f -name '*.apk' | head -1)
+          cp "$APK" auxegram.apk
           ls -lh auxegram.apk
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: auxegram
-          path: auxegram.apk
+          git config user.name auxegram-builder
+          git config user.email builder@users.noreply.github.com
+          git checkout -B apk
+          git add -f auxegram.apk
+          git commit -m "Built AuxeGram APK" || true
+          git push -f origin apk
