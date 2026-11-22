@@ -35,13 +35,10 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
-#include <ios>
 #include <istream>
 #include <limits>
-#include <ostream>
 #include <type_traits>
 
-#include "absl/base/config.h"
 #include "absl/meta/type_traits.h"
 #include "absl/random/internal/fast_uniform_bits.h"
 #include "absl/random/internal/generate_real.h"
@@ -99,7 +96,7 @@ class uniform_real_distribution {
     friend class uniform_real_distribution;
     result_type lo_, hi_, range_;
 
-    static_assert(std::is_floating_point_v<RealType>,
+    static_assert(std::is_floating_point<RealType>::value,
                   "Class-template absl::uniform_real_distribution<> must be "
                   "parameterized using a floating-point type.");
   };
@@ -160,7 +157,7 @@ uniform_real_distribution<RealType>::operator()(
   using random_internal::GeneratePositiveTag;
   using random_internal::GenerateRealFromBits;
   using real_type =
-      std::conditional_t<std::is_same_v<RealType, float>, float, double>;
+      absl::conditional_t<std::is_same<RealType, float>::value, float, double>;
 
   while (true) {
     const result_type sample =
@@ -195,13 +192,7 @@ std::basic_istream<CharT, Traits>& operator>>(
   if (is.fail()) return is;
   auto b = random_internal::read_floating_point<result_type>(is);
   if (!is.fail()) {
-    if (std::isfinite(a) && std::isfinite(b) && a <= b &&
-        static_cast<result_type>(b - a) <=
-            (std::numeric_limits<result_type>::max)()) {
-      x.param(param_type(a, b));
-    } else {
-      is.setstate(std::ios_base::failbit);
-    }
+    x.param(param_type(a, b));
   }
   return is;
 }

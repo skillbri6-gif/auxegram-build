@@ -19,10 +19,6 @@
 // `absl::Cleanup` implements the scope guard idiom, invoking the contained
 // callback's `operator()() &&` on scope exit.
 //
-// This class doesn't allocate or take any locks, and is safe to use in a signal
-// handler. Of course the callback with which it is constructed also must be
-// signal safe in order for this to be useful.
-//
 // Example:
 //
 // ```
@@ -75,7 +71,6 @@
 #include <utility>
 
 #include "absl/base/config.h"
-#include "absl/base/internal/hardening.h"
 #include "absl/base/macros.h"
 #include "absl/cleanup/internal/cleanup.h"
 
@@ -83,7 +78,7 @@ namespace absl {
 ABSL_NAMESPACE_BEGIN
 
 template <typename Arg, typename Callback = void()>
-class [[nodiscard]] Cleanup final {
+class ABSL_MUST_USE_RESULT Cleanup final {
   static_assert(cleanup_internal::WasDeduced<Arg>(),
                 "Explicit template parameters are not supported.");
 
@@ -96,12 +91,12 @@ class [[nodiscard]] Cleanup final {
   Cleanup(Cleanup&& other) = default;
 
   void Cancel() && {
-    absl::base_internal::HardeningAssert(storage_.IsCallbackEngaged());
+    ABSL_HARDENING_ASSERT(storage_.IsCallbackEngaged());
     storage_.DestroyCallback();
   }
 
   void Invoke() && {
-    absl::base_internal::HardeningAssert(storage_.IsCallbackEngaged());
+    ABSL_HARDENING_ASSERT(storage_.IsCallbackEngaged());
     storage_.InvokeCallback();
     storage_.DestroyCallback();
   }
@@ -120,8 +115,10 @@ class [[nodiscard]] Cleanup final {
 // `absl::Cleanup c = /* callback */;`
 //
 // C++17 type deduction API for creating an instance of `absl::Cleanup`
+#if defined(ABSL_HAVE_CLASS_TEMPLATE_ARGUMENT_DEDUCTION)
 template <typename Callback>
 Cleanup(Callback callback) -> Cleanup<cleanup_internal::Tag, Callback>;
+#endif  // defined(ABSL_HAVE_CLASS_TEMPLATE_ARGUMENT_DEDUCTION)
 
 // `auto c = absl::MakeCleanup(/* callback */);`
 //

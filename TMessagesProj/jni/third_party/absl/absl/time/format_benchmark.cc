@@ -11,10 +11,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <iterator>
+#include <cstddef>
 #include <string>
 
-#include "absl/time/civil_time.h"
 #include "absl/time/internal/test_util.h"
 #include "absl/time/time.h"
 #include "benchmark/benchmark.h"
@@ -30,7 +29,7 @@ const char* const kFormats[] = {
     "%Y-%m-%d%ET%H:%M:%S",  // 4
     "%Y-%m-%d",             // 5
 };
-const int kNumFormats = std::size(kFormats);
+const int kNumFormats = sizeof(kFormats) / sizeof(kFormats[0]);
 }  // namespace
 
 void BM_Format_FormatTime(benchmark::State& state) {

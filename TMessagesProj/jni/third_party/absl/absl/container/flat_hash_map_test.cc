@@ -16,39 +16,30 @@
 
 #include <cstddef>
 #include <memory>
-#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "absl/base/config.h"
 #include "absl/container/internal/hash_generator_testing.h"
-#include "absl/container/internal/hash_policy_testing.h"
-#include "absl/container/internal/test_allocator.h"
 #include "absl/container/internal/unordered_map_constructor_test.h"
 #include "absl/container/internal/unordered_map_lookup_test.h"
 #include "absl/container/internal/unordered_map_members_test.h"
 #include "absl/container/internal/unordered_map_modifiers_test.h"
-#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/meta/type_traits.h"
-
-#if ABSL_INTERNAL_CPLUSPLUS_LANG >= 202002L
-#include <ranges>  // NOLINT(build/c++20)
-#endif
+#include "absl/types/any.h"
 
 namespace absl {
 ABSL_NAMESPACE_BEGIN
 namespace container_internal {
 namespace {
-
+using ::absl::container_internal::hash_internal::Enum;
+using ::absl::container_internal::hash_internal::EnumClass;
 using ::testing::_;
 using ::testing::IsEmpty;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
-using ::testing::UnorderedElementsAreArray;
 
 // Check that absl::flat_hash_map works in a global constructor.
 struct BeforeMain {
@@ -67,7 +58,7 @@ template <class K, class V>
 using Map = flat_hash_map<K, V, StatefulTestingHash, StatefulTestingEqual,
                           Alloc<std::pair<const K, V>>>;
 
-static_assert(!std::is_standard_layout<NonStandardLayout>());
+static_assert(!std::is_standard_layout<NonStandardLayout>(), "");
 
 using MapTypes =
     ::testing::Types<Map<int, int>, Map<std::string, int>,
@@ -93,7 +84,7 @@ TEST(FlatHashMap, StandardLayout) {
     bool operator==(const Int& other) const { return value == other.value; }
     size_t value;
   };
-  static_assert(std::is_standard_layout<Int>());
+  static_assert(std::is_standard_layout<Int>(), "");
 
   struct Hash {
     size_t operator()(const Int& obj) const { return obj.value; }
@@ -118,28 +109,31 @@ TEST(FlatHashMap, StandardLayout) {
 }
 
 TEST(FlatHashMap, Relocatability) {
-  static_assert(absl::is_trivially_relocatable<int>::value);
+  static_assert(absl::is_trivially_relocatable<int>::value, "");
   static_assert(
-      std::is_same_v<
-          decltype(absl::container_internal::FlatHashMapPolicy<
-                   int, int>::transfer<std::allocator<char>>(nullptr, nullptr,
-                                                             nullptr)),
-          std::true_type>);
+      absl::is_trivially_relocatable<std::pair<const int, int>>::value, "");
+  static_assert(
+      std::is_same<decltype(absl::container_internal::FlatHashMapPolicy<
+                            int, int>::transfer<std::allocator<char>>(nullptr,
+                                                                      nullptr,
+                                                                      nullptr)),
+                   std::true_type>::value,
+      "");
 
-  struct NonRelocatable {
-    NonRelocatable() = default;
-    NonRelocatable(NonRelocatable&&) {}
-    NonRelocatable& operator=(NonRelocatable&&) { return *this; }
-    void* self = nullptr;
-  };
+    struct NonRelocatable {
+      NonRelocatable() = default;
+      NonRelocatable(NonRelocatable&&) {}
+      NonRelocatable& operator=(NonRelocatable&&) { return *this; }
+      void* self = nullptr;
+    };
 
   EXPECT_FALSE(absl::is_trivially_relocatable<NonRelocatable>::value);
   EXPECT_TRUE(
-      (std::is_same_v<decltype(absl::container_internal::FlatHashMapPolicy<
-                               int, NonRelocatable>::
-                                   transfer<std::allocator<char>>(
-                                       nullptr, nullptr, nullptr)),
-                      std::false_type>));
+      (std::is_same<decltype(absl::container_internal::FlatHashMapPolicy<
+                            int, NonRelocatable>::
+                                transfer<std::allocator<char>>(nullptr, nullptr,
+                                                               nullptr)),
+                   std::false_type>::value));
 }
 
 // gcc becomes unhappy if this is inside the method, so pull it out here.
@@ -308,6 +302,8 @@ TEST(FlatHashMap, EraseIf) {
   }
 }
 
+// This test requires std::launder for mutable key access in node handles.
+#if defined(__cpp_lib_launder) && __cpp_lib_launder >= 201606
 TEST(FlatHashMap, NodeHandleMutableKeyAccess) {
   flat_hash_map<std::string, std::string> map;
 
@@ -319,6 +315,7 @@ TEST(FlatHashMap, NodeHandleMutableKeyAccess) {
 
   EXPECT_THAT(map, testing::ElementsAre(Pair("key", "mapped")));
 }
+#endif
 
 TEST(FlatHashMap, Reserve) {
   // Verify that if we reserve(size() + n) then we can perform n insertions
@@ -349,99 +346,10 @@ TEST(FlatHashMap, Reserve) {
 TEST(FlatHashMap, RecursiveTypeCompiles) {
   struct RecursiveType {
     flat_hash_map<int, RecursiveType> m;
-    flat_hash_map<int, RecursiveType>::iterator it;
-    flat_hash_map<int, RecursiveType>::const_iterator cit;
-    void Erase(int key) { m.erase(key); }
   };
   RecursiveType t;
   t.m[0] = RecursiveType{};
-  t.it = t.m.begin();
-  t.cit = t.m.cbegin();
-  EXPECT_NE(t.it, t.m.end());
-  EXPECT_NE(t.cit, t.m.cend());
-  t.Erase(0);
-  EXPECT_TRUE(t.m.empty());
 }
-
-TEST(FlatHashMap, FlatHashMapPolicyDestroyReturnsTrue) {
-  EXPECT_TRUE(
-      (decltype(FlatHashMapPolicy<int, char>::destroy<std::allocator<char>>(
-          nullptr, nullptr))()));
-  EXPECT_FALSE(
-      (decltype(FlatHashMapPolicy<int, char>::destroy<CountingAllocator<char>>(
-          nullptr, nullptr))()));
-  EXPECT_FALSE((decltype(FlatHashMapPolicy<int, std::unique_ptr<int>>::destroy<
-                         std::allocator<char>>(nullptr, nullptr))()));
-}
-
-TEST(FlatHashMap, NonStandardLayoutKeyAndValueUseTypeErasedSlotFns) {
-  using Policy = FlatHashMapPolicy<NonStandardLayout, NonStandardLayout>;
-  EXPECT_NE((Policy::get_hash_slot_fn<absl::Hash<NonStandardLayout>,
-                                      /*kIsDefault=*/true, /*kSeedShift=*/0>()),
-            nullptr);
-}
-
-struct InconsistentHashEqType {
-  InconsistentHashEqType(int v1, int v2) : v1(v1), v2(v2) {}
-  template <typename H>
-  friend H AbslHashValue(H h, InconsistentHashEqType t) {
-    return H::combine(std::move(h), t.v1);
-  }
-  bool operator==(InconsistentHashEqType t) const { return v2 == t.v2; }
-  int v1, v2;
-};
-
-TEST(Iterator, InconsistentHashEqFunctorsValidation) {
-  if (!IsAssertEnabled()) GTEST_SKIP() << "Assertions not enabled.";
-
-  absl::flat_hash_map<InconsistentHashEqType, int> m;
-  for (int i = 0; i < 10; ++i) m[{i, i}] = 1;
-  // We need to insert multiple times to guarantee that we get the assertion
-  // because it's possible for the hash to collide with the inserted element
-  // that has v2==0. In those cases, the new element won't be inserted.
-  auto insert_conflicting_elems = [&] {
-    for (int i = 100; i < 20000; ++i) {
-      EXPECT_EQ((m[{i, 0}]), 1);
-    }
-  };
-
-  const char* crash_message = "hash/eq functors are inconsistent.";
-#if defined(__arm__) || defined(__aarch64__)
-  // On ARM, the crash message is garbled so don't expect a specific message.
-  crash_message = "";
-#endif
-  EXPECT_DEATH_IF_SUPPORTED(insert_conflicting_elems(), crash_message);
-}
-
-#if defined(__cpp_lib_containers_ranges) && \
-    __cpp_lib_containers_ranges >= 202202L
-TEST(FlatHashMap, FromRange) {
-  std::vector<std::pair<int, int>> v = {{1, 2}, {3, 4}, {5, 6}};
-  absl::flat_hash_map<int, int> m(std::from_range, v);
-  EXPECT_THAT(m, UnorderedElementsAre(Pair(1, 2), Pair(3, 4), Pair(5, 6)));
-}
-
-TEST(FlatHashMap, FromRangeWithAllocator) {
-  std::vector<std::pair<int, int>> v = {{1, 2}, {3, 4}, {5, 6}};
-  absl::flat_hash_map<int, int,
-                      absl::container_internal::hash_default_hash<int>,
-                      absl::container_internal::hash_default_eq<int>,
-                      Alloc<std::pair<const int, int>>>
-      m(std::from_range, v, 0, Alloc<std::pair<const int, int>>());
-  EXPECT_THAT(m, UnorderedElementsAre(Pair(1, 2), Pair(3, 4), Pair(5, 6)));
-}
-
-TEST(FlatHashMap, FromRangeWithHasherAndAllocator) {
-  std::vector<std::pair<int, int>> v = {{1, 2}, {3, 4}, {5, 6}};
-  using TestingHash = absl::container_internal::StatefulTestingHash;
-  absl::flat_hash_map<int, int, TestingHash,
-                      absl::container_internal::hash_default_eq<int>,
-                      Alloc<std::pair<const int, int>>>
-      m(std::from_range, v, 0, TestingHash{},
-        Alloc<std::pair<const int, int>>());
-  EXPECT_THAT(m, UnorderedElementsAre(Pair(1, 2), Pair(3, 4), Pair(5, 6)));
-}
-#endif
 
 }  // namespace
 }  // namespace container_internal

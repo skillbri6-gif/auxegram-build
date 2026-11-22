@@ -32,13 +32,13 @@ absl_cc_library(
     absl::endian
     absl::fixed_array
     absl::function_ref
-    absl::int128
     absl::meta
+    absl::int128
+    absl::strings
     absl::optional
-    absl::string_view
-    absl::utility
     absl::variant
-    absl::weakly_mixed_integer
+    absl::utility
+    absl::low_level_hash
   PUBLIC
 )
 
@@ -50,8 +50,8 @@ absl_cc_library(
   COPTS
     ${ABSL_TEST_COPTS}
   DEPS
-    absl::meta
     absl::spy_hash_state
+    absl::meta
     absl::strings
     absl::variant
     GTest::gmock
@@ -68,18 +68,23 @@ absl_cc_test(
   COPTS
     ${ABSL_TEST_COPTS}
   DEPS
-    absl::bits
+    absl::btree
     absl::cord_test_helpers
+    absl::core_headers
     absl::flat_hash_map
     absl::flat_hash_set
     absl::hash
     absl::hash_testing
+    absl::int128
+    absl::memory
+    absl::meta
+    absl::node_hash_map
+    absl::node_hash_set
+    absl::optional
     absl::spy_hash_state
     absl::string_view
-    absl::strings
+    absl::variant
     GTest::gmock_main
-  SHARD_COUNT
-    4
 )
 
 absl_cc_test(
@@ -91,12 +96,12 @@ absl_cc_test(
   COPTS
     ${ABSL_TEST_COPTS}
   DEPS
-    absl::btree
-    absl::config
-    absl::flat_hash_map
-    absl::flat_hash_set
     absl::hash
     absl::hash_testing
+    absl::config
+    absl::btree
+    absl::flat_hash_map
+    absl::flat_hash_set
     absl::node_hash_map
     absl::node_hash_set
     GTest::gmock_main
@@ -116,9 +121,8 @@ absl_cc_library(
     ${ABSL_DEFAULT_COPTS}
   DEPS
     absl::hash
-    absl::str_format
     absl::strings
-    absl::weakly_mixed_integer
+    absl::str_format
   TESTONLY
   PUBLIC
 )
@@ -134,7 +138,6 @@ absl_cc_library(
   COPTS
     ${ABSL_DEFAULT_COPTS}
   DEPS
-    absl::bits
     absl::config
     absl::core_headers
     absl::endian
@@ -155,44 +158,18 @@ absl_cc_test(
 # Internal-only target, do not depend on directly.
 absl_cc_library(
   NAME
-    weakly_mixed_integer
+    low_level_hash
   HDRS
-    "internal/weakly_mixed_integer.h"
-  COPTS
-    ${ABSL_DEFAULT_COPTS}
-  DEPS
-    absl::config
-)
-
-# Internal-only target, do not depend on directly.
-absl_cc_library(
-  NAME
-    canonical_hash
-  HDRS
-    "internal/canonical_hash.h"
-  COPTS
-    ${ABSL_DEFAULT_COPTS}
-  DEPS
-    absl::base
-    absl::config
-    absl::hash
-    absl::type_traits
-  PUBLIC
-)
-
-absl_cc_test(
-  NAME
-    canonical_hash_test
+    "internal/low_level_hash.h"
   SRCS
-    "internal/canonical_hash_test.cc"
+    "internal/low_level_hash.cc"
   COPTS
-    ${ABSL_TEST_COPTS}
+    ${ABSL_DEFAULT_COPTS}
   DEPS
-    absl::canonical_hash
     absl::config
-    absl::hash
-    absl::string_view
-    GTest::gmock_main
+    absl::endian
+    absl::int128
+    absl::prefetch
 )
 
 absl_cc_test(
@@ -203,8 +180,7 @@ absl_cc_test(
   COPTS
     ${ABSL_TEST_COPTS}
   DEPS
-    absl::hash
-    absl::string_view
+    absl::low_level_hash
     absl::strings
     GTest::gmock_main
 )

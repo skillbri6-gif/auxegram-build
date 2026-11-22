@@ -18,7 +18,6 @@
 #include <stdlib.h>
 
 #include <algorithm>
-#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -29,10 +28,14 @@
 #include <utility>
 #include <vector>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
 #include "absl/base/config.h"
-#include "absl/base/no_destructor.h"
+#include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/flags/commandlineflag.h"
 #include "absl/flags/config.h"
@@ -54,10 +57,6 @@
 #include "absl/strings/strip.h"
 #include "absl/synchronization/mutex.h"
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
-
 // --------------------------------------------------------------------
 
 namespace absl {
@@ -65,27 +64,18 @@ ABSL_NAMESPACE_BEGIN
 namespace flags_internal {
 namespace {
 
-ABSL_CONST_INIT std::atomic<bool> g_disable_indirect_flag_expansion(false);
-
-absl::Mutex& ProcessingChecksMutex() {
-  static absl::NoDestructor<absl::Mutex> mutex;
-  return *mutex;
-}
+ABSL_CONST_INIT absl::Mutex processing_checks_guard(absl::kConstInit);
 
 ABSL_CONST_INIT bool flagfile_needs_processing
-    ABSL_GUARDED_BY(ProcessingChecksMutex()) = false;
+    ABSL_GUARDED_BY(processing_checks_guard) = false;
 ABSL_CONST_INIT bool fromenv_needs_processing
-    ABSL_GUARDED_BY(ProcessingChecksMutex()) = false;
+    ABSL_GUARDED_BY(processing_checks_guard) = false;
 ABSL_CONST_INIT bool tryfromenv_needs_processing
-    ABSL_GUARDED_BY(ProcessingChecksMutex()) = false;
+    ABSL_GUARDED_BY(processing_checks_guard) = false;
 
-absl::Mutex& SpecifiedFlagsMutex() {
-  static absl::NoDestructor<absl::Mutex> mutex;
-  return *mutex;
-}
-
+ABSL_CONST_INIT absl::Mutex specified_flags_guard(absl::kConstInit);
 ABSL_CONST_INIT std::vector<const CommandLineFlag*>* specified_flags
-    ABSL_GUARDED_BY(SpecifiedFlagsMutex()) = nullptr;
+    ABSL_GUARDED_BY(specified_flags_guard) = nullptr;
 
 // Suggesting at most kMaxHints flags in case of misspellings.
 ABSL_CONST_INIT const size_t kMaxHints = 100;
@@ -116,7 +106,7 @@ ABSL_FLAG(std::vector<std::string>, flagfile, {},
     .OnUpdate([]() {
       if (absl::GetFlag(FLAGS_flagfile).empty()) return;
 
-      absl::MutexLock l(absl::flags_internal::ProcessingChecksMutex());
+      absl::MutexLock l(&absl::flags_internal::processing_checks_guard);
 
       // Setting this flag twice before it is handled most likely an internal
       // error and should be reviewed by developers.
@@ -132,7 +122,7 @@ ABSL_FLAG(std::vector<std::string>, fromenv, {},
     .OnUpdate([]() {
       if (absl::GetFlag(FLAGS_fromenv).empty()) return;
 
-      absl::MutexLock l(absl::flags_internal::ProcessingChecksMutex());
+      absl::MutexLock l(&absl::flags_internal::processing_checks_guard);
 
       // Setting this flag twice before it is handled most likely an internal
       // error and should be reviewed by developers.
@@ -148,7 +138,7 @@ ABSL_FLAG(std::vector<std::string>, tryfromenv, {},
     .OnUpdate([]() {
       if (absl::GetFlag(FLAGS_tryfromenv).empty()) return;
 
-      absl::MutexLock l(absl::flags_internal::ProcessingChecksMutex());
+      absl::MutexLock l(&absl::flags_internal::processing_checks_guard);
 
       // Setting this flag twice before it is handled most likely an internal
       // error and should be reviewed by developers.
@@ -209,12 +199,9 @@ bool ArgsList::ReadFromFlagfile(const std::string& flag_file_name) {
 
   std::string line;
   bool success = true;
-  int line_number = 0;
 
   while (std::getline(flag_file, line)) {
-    line_number++;
-    absl::string_view stripped =
-        absl::StripLeadingAsciiWhitespace(absl::StripSuffix(line, "\r"));
+    absl::string_view stripped = absl::StripLeadingAsciiWhitespace(line);
 
     if (stripped.empty() || stripped[0] == '#') {
       // Comment or empty line; just ignore.
@@ -235,8 +222,8 @@ bool ArgsList::ReadFromFlagfile(const std::string& flag_file_name) {
     }
 
     flags_internal::ReportUsageError(
-        absl::StrCat("Unexpected line ", line_number, " in the flagfile ",
-                     flag_file_name),
+        absl::StrCat("Unexpected line in the flagfile ", flag_file_name, ": ",
+                     line),
         true);
 
     success = false;
@@ -358,12 +345,6 @@ void CheckDefaultValuesParsingRoundtrip() {
 // etc.
 bool ReadFlagfiles(const std::vector<std::string>& flagfiles,
                    std::vector<ArgsList>& input_args) {
-  if (!flags_internal::IsIndirectFlagExpansionEnabled()) {
-    flags_internal::ReportUsageError(
-        "Skipping expansion of --flagfile as it is disabled.", false);
-    return true;
-  }
-
   bool success = true;
   for (auto it = flagfiles.rbegin(); it != flagfiles.rend(); ++it) {
     ArgsList al;
@@ -386,13 +367,6 @@ bool ReadFlagfiles(const std::vector<std::string>& flagfiles,
 bool ReadFlagsFromEnv(const std::vector<std::string>& flag_names,
                       std::vector<ArgsList>& input_args,
                       bool fail_on_absent_in_env) {
-  if (!flags_internal::IsIndirectFlagExpansionEnabled()) {
-    flags_internal::ReportUsageError(
-        "Skipping expansion of --fromenv/--tryfromenv as it is disabled.",
-        false);
-    return true;
-  }
-
   bool success = true;
   std::vector<std::string> args;
 
@@ -441,7 +415,7 @@ bool HandleGeneratorFlags(std::vector<ArgsList>& input_args,
                           std::vector<std::string>& flagfile_value) {
   bool success = true;
 
-  absl::MutexLock l(flags_internal::ProcessingChecksMutex());
+  absl::MutexLock l(&flags_internal::processing_checks_guard);
 
   // flagfile could have been set either on a command line or
   // programmatically before invoking ParseCommandLine. Note that we do not
@@ -504,7 +478,7 @@ void ResetGeneratorFlags(const std::vector<std::string>& flagfile_value) {
   // going to be {"f1", "f2"}
   if (!flagfile_value.empty()) {
     absl::SetFlag(&FLAGS_flagfile, flagfile_value);
-    absl::MutexLock l(flags_internal::ProcessingChecksMutex());
+    absl::MutexLock l(&flags_internal::processing_checks_guard);
     flags_internal::flagfile_needs_processing = false;
   }
 
@@ -516,7 +490,7 @@ void ResetGeneratorFlags(const std::vector<std::string>& flagfile_value) {
     absl::SetFlag(&FLAGS_tryfromenv, {});
   }
 
-  absl::MutexLock l(flags_internal::ProcessingChecksMutex());
+  absl::MutexLock l(&flags_internal::processing_checks_guard);
   flags_internal::fromenv_needs_processing = false;
   flags_internal::tryfromenv_needs_processing = false;
 }
@@ -663,7 +637,7 @@ void ReportUnrecognizedFlags(
 // --------------------------------------------------------------------
 
 bool WasPresentOnCommandLine(absl::string_view flag_name) {
-  absl::ReaderMutexLock l(SpecifiedFlagsMutex());
+  absl::ReaderMutexLock l(&specified_flags_guard);
   ABSL_INTERNAL_CHECK(specified_flags != nullptr,
                       "ParseCommandLine is not invoked yet");
 
@@ -790,7 +764,7 @@ HelpMode ParseAbseilFlagsOnlyImpl(
   }
   positional_args.push_back(argv[0]);
 
-  absl::MutexLock l(flags_internal::SpecifiedFlagsMutex());
+  absl::MutexLock l(&flags_internal::specified_flags_guard);
   if (specified_flags == nullptr) {
     specified_flags = new std::vector<const CommandLineFlag*>;
   } else {
@@ -938,15 +912,7 @@ HelpMode ParseAbseilFlagsOnlyImpl(
              : HelpMode::kNone;
 }
 
-bool IsIndirectFlagExpansionEnabled() {
-  return !g_disable_indirect_flag_expansion;
-}
-
 }  // namespace flags_internal
-
-void DisableFlagfileAndEnvParsing() {
-  flags_internal::g_disable_indirect_flag_expansion = true;
-}
 
 void ParseAbseilFlagsOnly(int argc, char* argv[],
                           std::vector<char*>& positional_args,

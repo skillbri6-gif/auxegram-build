@@ -14,14 +14,18 @@
 
 SETLOCAL ENABLEDELAYEDEXPANSION
 
-:: The version of GoogleTest to be used in the CMake tests in this directory.
-:: Keep this in sync with the version in the MODULE.bazel file.
-SET ABSL_GOOGLETEST_VERSION=1.18.0
+:: The commit of GoogleTest to be used in the CMake tests in this directory.
+:: Keep this in sync with the commit in the WORKSPACE file.
+:: TODO(dmauro): After the next GoogleTest release, use the stable file required
+:: by Bzlmod.  This means downloading a copy of the file and reuploading it to
+:: avoid changing checksums if the compression is changed by GitHub.  It also
+:: means stop referring to it as a commit and instead use the uploaded filename.
+SET ABSL_GOOGLETEST_COMMIT=f8d7d77c06936315286eb55f8de22cd23c188571
 
-IF EXIST %KOKORO_GFILE_DIR%\distdir\googletest-%ABSL_GOOGLETEST_VERSION%.tar.gz (
-  SET ABSL_GOOGLETEST_DOWNLOAD_URL=file://%KOKORO_GFILE_DIR%\distdir\googletest-%ABSL_GOOGLETEST_VERSION%.tar.gz
+IF EXIST %KOKORO_GFILE_DIR%\distdir\%ABSL_GOOGLETEST_COMMIT%.zip (
+  SET ABSL_GOOGLETEST_DOWNLOAD_URL=file://%KOKORO_GFILE_DIR%\distdir\%ABSL_GOOGLETEST_COMMIT%.zip
 ) ELSE (
-  SET ABSL_GOOGLETEST_DOWNLOAD_URL=https://github.com/google/googletest/releases/download/v%ABSL_GOOGLETEST_VERSION%/googletest-%ABSL_GOOGLETEST_VERSION%.tar.gz
+  SET ABSL_GOOGLETEST_DOWNLOAD_URL=https://github.com/google/googletest/archive/%ABSL_GOOGLETEST_COMMIT%.zip
 )
 
 :: Replace '\' with '/' in Windows paths for CMake.
@@ -40,17 +44,6 @@ SET CTEST_OUTPUT_ON_FAILURE=1
 SET CMAKE_BUILD_PARALLEL_LEVEL=16
 SET CTEST_PARALLEL_LEVEL=16
 
-:: Set the standard version, [c++17|c++latest]
-:: https://msdn.microsoft.com/en-us/library/mt490614.aspx
-:: The default is c++17 if not set on command line.
-IF NOT DEFINED STD SET STD=17
-
-IF NOT DEFINED ABSL_CMAKE_BUILD_SHARED SET ABSL_CMAKE_BUILD_SHARED=OFF
-
-IF NOT DEFINED ABSL_CMAKE_BUILD_TYPE SET ABSL_CMAKE_BUILD_TYPE=Debug
-
-IF NOT DEFINED ABSL_CMAKE_GENERATOR SET "ABSL_CMAKE_GENERATOR=Visual Studio 17 2022"
-
 :: Change directory to the root of the project.
 CD %~dp0\..
 if %errorlevel% neq 0 EXIT /B 1
@@ -63,10 +56,11 @@ CD "build"
 SET CXXFLAGS="/WX"
 
 %CMAKE_BIN% ^
+  -DABSL_BUILD_TEST_HELPERS=ON ^
   -DABSL_BUILD_TESTING=ON ^
-  -DABSL_GOOGLETEST_DOWNLOAD_URL="%ABSL_GOOGLETEST_DOWNLOAD_URL%" ^
-  -DBUILD_SHARED_LIBS="%ABSL_CMAKE_BUILD_SHARED%" ^
-  -DCMAKE_CXX_STANDARD="%STD%" ^
+  -DABSL_GOOGLETEST_DOWNLOAD_URL=%ABSL_GOOGLETEST_DOWNLOAD_URL% ^
+  -DBUILD_SHARED_LIBS=%ABSL_CMAKE_BUILD_SHARED% ^
+  -DCMAKE_CXX_STANDARD=%ABSL_CMAKE_CXX_STANDARD% ^
   -G "%ABSL_CMAKE_GENERATOR%" ^
   ..
 IF %errorlevel% neq 0 EXIT /B 1

@@ -14,8 +14,6 @@
 # limitations under the License.
 #
 
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load(
     "//absl:copts/configure_copts.bzl",
     "ABSL_DEFAULT_COPTS",
@@ -24,7 +22,7 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:private"],
+    default_visibility = ["//visibility:public"],
     features = [
         "header_modules",
         "layering_check",
@@ -39,10 +37,8 @@ cc_library(
     hdrs = ["algorithm.h"],
     copts = ABSL_DEFAULT_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
-    visibility = ["//visibility:public"],
     deps = [
         "//absl/base:config",
-        "//absl/base:core_headers",
     ],
 )
 
@@ -55,8 +51,8 @@ cc_test(
     deps = [
         ":algorithm",
         "//absl/base:config",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -67,13 +63,10 @@ cc_library(
     ],
     copts = ABSL_DEFAULT_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
-    visibility = ["//visibility:public"],
     deps = [
         ":algorithm",
-        "//absl/base:config",
         "//absl/base:core_headers",
-        "//absl/base:hardening",
-        "//absl/base:iterator_traits_internal",
+        "//absl/base:nullability",
         "//absl/meta:type_traits",
     ],
 )
@@ -86,13 +79,10 @@ cc_test(
     deps = [
         ":container",
         "//absl/base",
-        "//absl/base:config",
         "//absl/base:core_headers",
         "//absl/memory",
-        "//absl/meta:type_traits",
-        "//absl/random",
         "//absl/types:span",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )

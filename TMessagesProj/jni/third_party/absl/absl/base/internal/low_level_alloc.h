@@ -69,16 +69,16 @@ class LowLevelAlloc {
   // Returns 0 if passed request==0.
   // Does not return 0 under other circumstances; it crashes if memory
   // is not available.
-  ABSL_ATTRIBUTE_SECTION(malloc_hook) static void* Alloc(size_t request);
-  ABSL_ATTRIBUTE_SECTION(malloc_hook)
-  static void* AllocWithArena(size_t request, Arena* arena);
+  static void *Alloc(size_t request) ABSL_ATTRIBUTE_SECTION(malloc_hook);
+  static void *AllocWithArena(size_t request, Arena *arena)
+      ABSL_ATTRIBUTE_SECTION(malloc_hook);
 
   // Deallocates a region of memory that was previously allocated with
   // Alloc().   Does nothing if passed 0.   "s" must be either 0,
   // or must have been returned from a call to Alloc() and not yet passed to
   // Free() since that call to Alloc().  The space is returned to the arena
   // from which it was allocated.
-  ABSL_ATTRIBUTE_SECTION(malloc_hook) static void Free(void* s);
+  static void Free(void *s) ABSL_ATTRIBUTE_SECTION(malloc_hook);
 
   // ABSL_ATTRIBUTE_SECTION(malloc_hook) for Alloc* and Free
   // are to put all callers of MallocHook::Invoke* in this module
@@ -119,12 +119,6 @@ class LowLevelAlloc {
  private:
   LowLevelAlloc();      // no instances
 };
-
-// Returns a global async-signal-safe arena for LowLevelAlloc.
-LowLevelAlloc::Arena *SigSafeArena();
-
-// Ensures the global async-signal-safe arena for LowLevelAlloc is initialized.
-void InitSigSafeArena();
 
 }  // namespace base_internal
 ABSL_NAMESPACE_END

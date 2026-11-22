@@ -32,8 +32,8 @@
 //     continuously and independently at a constant average rate
 //   * `absl::Gaussian` (also known as "normal distributions") for continuous
 //     distributions using an associated quadratic function
-//   * `absl::LogUniform` for discrete distributions where the log to the given
-//     base of all values is uniform
+//   * `absl::LogUniform` for continuous uniform distributions where the log
+//     to the given base of all values is uniform
 //   * `absl::Poisson` for discrete probability distributions that express the
 //     probability of a given number of events occurring within a fixed interval
 //   * `absl::Zipf` for discrete probability distributions commonly used for
@@ -46,33 +46,35 @@
 #ifndef ABSL_RANDOM_DISTRIBUTIONS_H_
 #define ABSL_RANDOM_DISTRIBUTIONS_H_
 
+#include <algorithm>
+#include <cmath>
 #include <limits>
+#include <random>
 #include <type_traits>
 
-#include "absl/base/config.h"
-#include "absl/meta/type_traits.h"
+#include "absl/base/internal/inline_variable.h"
 #include "absl/random/bernoulli_distribution.h"
 #include "absl/random/beta_distribution.h"
 #include "absl/random/exponential_distribution.h"
 #include "absl/random/gaussian_distribution.h"
 #include "absl/random/internal/distribution_caller.h"  // IWYU pragma: export
-#include "absl/random/internal/traits.h"
 #include "absl/random/internal/uniform_helper.h"  // IWYU pragma: export
 #include "absl/random/log_uniform_int_distribution.h"
 #include "absl/random/poisson_distribution.h"
-#include "absl/random/uniform_int_distribution.h"  // IWYU pragma: export
-#include "absl/random/uniform_real_distribution.h"  // IWYU pragma: export
+#include "absl/random/uniform_int_distribution.h"
+#include "absl/random/uniform_real_distribution.h"
 #include "absl/random/zipf_distribution.h"
 
 namespace absl {
 ABSL_NAMESPACE_BEGIN
 
-inline constexpr IntervalClosedClosedTag IntervalClosedClosed = {};
-inline constexpr IntervalClosedClosedTag IntervalClosed = {};
-inline constexpr IntervalClosedOpenTag IntervalClosedOpen = {};
-inline constexpr IntervalOpenOpenTag IntervalOpenOpen = {};
-inline constexpr IntervalOpenOpenTag IntervalOpen = {};
-inline constexpr IntervalOpenClosedTag IntervalOpenClosed = {};
+ABSL_INTERNAL_INLINE_CONSTEXPR(IntervalClosedClosedTag, IntervalClosedClosed,
+                               {});
+ABSL_INTERNAL_INLINE_CONSTEXPR(IntervalClosedClosedTag, IntervalClosed, {});
+ABSL_INTERNAL_INLINE_CONSTEXPR(IntervalClosedOpenTag, IntervalClosedOpen, {});
+ABSL_INTERNAL_INLINE_CONSTEXPR(IntervalOpenOpenTag, IntervalOpenOpen, {});
+ABSL_INTERNAL_INLINE_CONSTEXPR(IntervalOpenOpenTag, IntervalOpen, {});
+ABSL_INTERNAL_INLINE_CONSTEXPR(IntervalOpenClosedTag, IntervalOpenClosed, {});
 
 // -----------------------------------------------------------------------------
 // absl::Uniform<T>(tag, bitgen, lo, hi)
@@ -117,11 +119,11 @@ inline constexpr IntervalOpenClosedTag IntervalOpenClosed = {};
 //   auto x = absl::Uniform<float>(bitgen, 0, 1);
 //
 template <typename R = void, typename TagType, typename URBG>
-typename std::enable_if_t<!std::is_same_v<R, void>, R>  //
+typename absl::enable_if_t<!std::is_same<R, void>::value, R>  //
 Uniform(TagType tag,
         URBG&& urbg,  // NOLINT(runtime/references)
         R lo, R hi) {
-  using gen_t = std::decay_t<URBG>;
+  using gen_t = absl::decay_t<URBG>;
   using distribution_t = random_internal::UniformDistributionWrapper<R>;
 
   auto a = random_internal::uniform_lower_bound(tag, lo, hi);
@@ -137,10 +139,10 @@ Uniform(TagType tag,
 // Overload of `Uniform()` using the default closed-open interval of [lo, hi),
 // and returning values of type `T`
 template <typename R = void, typename URBG>
-typename std::enable_if_t<!std::is_same_v<R, void>, R>  //
+typename absl::enable_if_t<!std::is_same<R, void>::value, R>  //
 Uniform(URBG&& urbg,  // NOLINT(runtime/references)
         R lo, R hi) {
-  using gen_t = std::decay_t<URBG>;
+  using gen_t = absl::decay_t<URBG>;
   using distribution_t = random_internal::UniformDistributionWrapper<R>;
   constexpr auto tag = absl::IntervalClosedOpen;
 
@@ -159,12 +161,12 @@ Uniform(URBG&& urbg,  // NOLINT(runtime/references)
 // correctly from the passed types.
 template <typename R = void, typename TagType, typename URBG, typename A,
           typename B>
-typename std::enable_if_t<std::is_same_v<R, void>,
-                          random_internal::uniform_inferred_return_t<A, B>>
+typename absl::enable_if_t<std::is_same<R, void>::value,
+                           random_internal::uniform_inferred_return_t<A, B>>
 Uniform(TagType tag,
         URBG&& urbg,  // NOLINT(runtime/references)
         A lo, B hi) {
-  using gen_t = std::decay_t<URBG>;
+  using gen_t = absl::decay_t<URBG>;
   using return_t = typename random_internal::uniform_inferred_return_t<A, B>;
   using distribution_t = random_internal::UniformDistributionWrapper<return_t>;
 
@@ -174,7 +176,7 @@ Uniform(TagType tag,
 
   return random_internal::DistributionCaller<gen_t>::template Call<
       distribution_t>(&urbg, tag, static_cast<return_t>(lo),
-                      static_cast<return_t>(hi));
+                                static_cast<return_t>(hi));
 }
 
 // absl::Uniform(bitgen, lo, hi)
@@ -183,11 +185,11 @@ Uniform(TagType tag,
 // default closed-open interval of [lo, hi). Note that a compile-error will
 // result if the return type cannot be deduced correctly from the passed types.
 template <typename R = void, typename URBG, typename A, typename B>
-typename std::enable_if_t<std::is_same_v<R, void>,
-                          random_internal::uniform_inferred_return_t<A, B>>
+typename absl::enable_if_t<std::is_same<R, void>::value,
+                           random_internal::uniform_inferred_return_t<A, B>>
 Uniform(URBG&& urbg,  // NOLINT(runtime/references)
         A lo, B hi) {
-  using gen_t = std::decay_t<URBG>;
+  using gen_t = absl::decay_t<URBG>;
   using return_t = typename random_internal::uniform_inferred_return_t<A, B>;
   using distribution_t = random_internal::UniformDistributionWrapper<return_t>;
 
@@ -198,7 +200,7 @@ Uniform(URBG&& urbg,  // NOLINT(runtime/references)
 
   return random_internal::DistributionCaller<gen_t>::template Call<
       distribution_t>(&urbg, static_cast<return_t>(lo),
-                      static_cast<return_t>(hi));
+                                static_cast<return_t>(hi));
 }
 
 // absl::Uniform<unsigned T>(bitgen)
@@ -206,9 +208,9 @@ Uniform(URBG&& urbg,  // NOLINT(runtime/references)
 // Overload of Uniform() using the minimum and maximum values of a given type
 // `T` (which must be unsigned), returning a value of type `unsigned T`
 template <typename R, typename URBG>
-typename std::enable_if_t<!std::numeric_limits<R>::is_signed, R>  //
+typename absl::enable_if_t<!std::is_signed<R>::value, R>  //
 Uniform(URBG&& urbg) {  // NOLINT(runtime/references)
-  using gen_t = std::decay_t<URBG>;
+  using gen_t = absl::decay_t<URBG>;
   using distribution_t = random_internal::UniformDistributionWrapper<R>;
 
   return random_internal::DistributionCaller<gen_t>::template Call<
@@ -238,7 +240,7 @@ Uniform(URBG&& urbg) {  // NOLINT(runtime/references)
 template <typename URBG>
 bool Bernoulli(URBG&& urbg,  // NOLINT(runtime/references)
                double p) {
-  using gen_t = std::decay_t<URBG>;
+  using gen_t = absl::decay_t<URBG>;
   using distribution_t = absl::bernoulli_distribution;
 
   return random_internal::DistributionCaller<gen_t>::template Call<
@@ -266,11 +268,11 @@ template <typename RealType, typename URBG>
 RealType Beta(URBG&& urbg,  // NOLINT(runtime/references)
               RealType alpha, RealType beta) {
   static_assert(
-      std::is_floating_point_v<RealType>,
+      std::is_floating_point<RealType>::value,
       "Template-argument 'RealType' must be a floating-point type, in "
       "absl::Beta<RealType, URBG>(...)");
 
-  using gen_t = std::decay_t<URBG>;
+  using gen_t = absl::decay_t<URBG>;
   using distribution_t = typename absl::beta_distribution<RealType>;
 
   return random_internal::DistributionCaller<gen_t>::template Call<
@@ -283,11 +285,8 @@ RealType Beta(URBG&& urbg,  // NOLINT(runtime/references)
 //
 // `absl::Exponential` produces a floating point number representing the
 // distance (time) between two consecutive events in a point process of events
-// occurring continuously and independently at a constant average rate `lambda`.
-// `T` must be a floating point type, but may be inferred from the type of
-// `lambda`.
-//
-// The mean of the distribution is 1/`lambda`.
+// occurring continuously and independently at a constant average rate. `T` must
+// be a floating point type, but may be inferred from the type of `lambda`.
 //
 // See https://en.wikipedia.org/wiki/Exponential_distribution.
 //
@@ -301,11 +300,11 @@ template <typename RealType, typename URBG>
 RealType Exponential(URBG&& urbg,  // NOLINT(runtime/references)
                      RealType lambda = 1) {
   static_assert(
-      std::is_floating_point_v<RealType>,
+      std::is_floating_point<RealType>::value,
       "Template-argument 'RealType' must be a floating-point type, in "
       "absl::Exponential<RealType, URBG>(...)");
 
-  using gen_t = std::decay_t<URBG>;
+  using gen_t = absl::decay_t<URBG>;
   using distribution_t = typename absl::exponential_distribution<RealType>;
 
   return random_internal::DistributionCaller<gen_t>::template Call<
@@ -332,11 +331,11 @@ template <typename RealType, typename URBG>
 RealType Gaussian(URBG&& urbg,  // NOLINT(runtime/references)
                   RealType mean = 0, RealType stddev = 1) {
   static_assert(
-      std::is_floating_point_v<RealType>,
+      std::is_floating_point<RealType>::value,
       "Template-argument 'RealType' must be a floating-point type, in "
       "absl::Gaussian<RealType, URBG>(...)");
 
-  using gen_t = std::decay_t<URBG>;
+  using gen_t = absl::decay_t<URBG>;
   using distribution_t = typename absl::gaussian_distribution<RealType>;
 
   return random_internal::DistributionCaller<gen_t>::template Call<
@@ -363,7 +362,7 @@ RealType Gaussian(URBG&& urbg,  // NOLINT(runtime/references)
 // If `lo` is nonzero then this distribution is shifted to the desired interval,
 // so LogUniform(lo, hi, b) is equivalent to LogUniform(0, hi-lo, b)+lo.
 //
-// See https://en.wikipedia.org/wiki/Reciprocal_distribution
+// See https://en.wikipedia.org/wiki/Log-normal_distribution
 //
 // Example:
 //
@@ -378,7 +377,7 @@ IntType LogUniform(URBG&& urbg,  // NOLINT(runtime/references)
                 "Template-argument 'IntType' must be an integral type, in "
                 "absl::LogUniform<IntType, URBG>(...)");
 
-  using gen_t = std::decay_t<URBG>;
+  using gen_t = absl::decay_t<URBG>;
   using distribution_t = typename absl::log_uniform_int_distribution<IntType>;
 
   return random_internal::DistributionCaller<gen_t>::template Call<
@@ -408,7 +407,7 @@ IntType Poisson(URBG&& urbg,  // NOLINT(runtime/references)
                 "Template-argument 'IntType' must be an integral type, in "
                 "absl::Poisson<IntType, URBG>(...)");
 
-  using gen_t = std::decay_t<URBG>;
+  using gen_t = absl::decay_t<URBG>;
   using distribution_t = typename absl::poisson_distribution<IntType>;
 
   return random_internal::DistributionCaller<gen_t>::template Call<
@@ -440,7 +439,7 @@ IntType Zipf(URBG&& urbg,  // NOLINT(runtime/references)
                 "Template-argument 'IntType' must be an integral type, in "
                 "absl::Zipf<IntType, URBG>(...)");
 
-  using gen_t = std::decay_t<URBG>;
+  using gen_t = absl::decay_t<URBG>;
   using distribution_t = typename absl::zipf_distribution<IntType>;
 
   return random_internal::DistributionCaller<gen_t>::template Call<

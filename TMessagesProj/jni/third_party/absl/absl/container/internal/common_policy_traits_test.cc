@@ -39,59 +39,44 @@ struct PolicyWithoutOptionalOps {
   using key_type = Slot;
   using init_type = Slot;
 
-  struct PolicyFunctions {
-    std::function<void(void*, Slot*, Slot)> construct;
-    std::function<void(void*, Slot*)> destroy;
-    std::function<Slot&(Slot*)> element;
-  };
+  static std::function<void(void*, Slot*, Slot)> construct;
+  static std::function<void(void*, Slot*)> destroy;
 
-  static PolicyFunctions* functions() {
-    static PolicyFunctions* functions = new PolicyFunctions();
-    return functions;
-  }
-
-  static void construct(void* a, Slot* b, Slot c) {
-    functions()->construct(a, b, c);
-  }
-  static void destroy(void* a, Slot* b) { functions()->destroy(a, b); }
-  static Slot& element(Slot* b) { return functions()->element(b); }
+  static std::function<Slot&(Slot*)> element;
 };
+
+std::function<void(void*, Slot*, Slot)> PolicyWithoutOptionalOps::construct;
+std::function<void(void*, Slot*)> PolicyWithoutOptionalOps::destroy;
+
+std::function<Slot&(Slot*)> PolicyWithoutOptionalOps::element;
 
 struct PolicyWithOptionalOps : PolicyWithoutOptionalOps {
-  struct TransferFunctions {
-    std::function<void(void*, Slot*, Slot*)> transfer;
-  };
-
-  static TransferFunctions* transfer_fn() {
-    static TransferFunctions* transfer_fn = new TransferFunctions();
-    return transfer_fn;
-  }
-  static void transfer(void* a, Slot* b, Slot* c) {
-    transfer_fn()->transfer(a, b, c);
-  }
+  static std::function<void(void*, Slot*, Slot*)> transfer;
 };
+std::function<void(void*, Slot*, Slot*)> PolicyWithOptionalOps::transfer;
 
-struct PolicyWithMemcpyTransferAndTrivialDestroy : PolicyWithoutOptionalOps {
-  static std::true_type transfer(void*, Slot*, Slot*) { return {}; }
-  static std::true_type destroy(void*, Slot*) { return {}; }
+struct PolicyWithMemcpyTransfer : PolicyWithoutOptionalOps {
+  static std::function<std::true_type(void*, Slot*, Slot*)> transfer;
 };
+std::function<std::true_type(void*, Slot*, Slot*)>
+    PolicyWithMemcpyTransfer::transfer;
 
 struct Test : ::testing::Test {
   Test() {
-    PolicyWithoutOptionalOps::functions()->construct = [&](void* a1, Slot* a2,
-                                                           Slot a3) {
+    PolicyWithoutOptionalOps::construct = [&](void* a1, Slot* a2, Slot a3) {
       construct.Call(a1, a2, std::move(a3));
     };
-    PolicyWithoutOptionalOps::functions()->destroy = [&](void* a1, Slot* a2) {
+    PolicyWithoutOptionalOps::destroy = [&](void* a1, Slot* a2) {
       destroy.Call(a1, a2);
     };
 
-    PolicyWithoutOptionalOps::functions()->element = [&](Slot* a1) -> Slot& {
+    PolicyWithoutOptionalOps::element = [&](Slot* a1) -> Slot& {
       return element.Call(a1);
     };
 
-    PolicyWithOptionalOps::transfer_fn()->transfer =
-        [&](void* a1, Slot* a2, Slot* a3) { return transfer.Call(a1, a2, a3); };
+    PolicyWithOptionalOps::transfer = [&](void* a1, Slot* a2, Slot* a3) {
+      return transfer.Call(a1, a2, a3);
+    };
   }
 
   std::allocator<Slot> alloc;
@@ -140,15 +125,7 @@ TEST(TransferUsesMemcpy, Basic) {
   EXPECT_FALSE(
       common_policy_traits<PolicyWithOptionalOps>::transfer_uses_memcpy());
   EXPECT_TRUE(
-      common_policy_traits<
-          PolicyWithMemcpyTransferAndTrivialDestroy>::transfer_uses_memcpy());
-}
-
-TEST(DestroyIsTrivial, Basic) {
-  EXPECT_FALSE(common_policy_traits<PolicyWithOptionalOps>::destroy_is_trivial<
-               std::allocator<char>>());
-  EXPECT_TRUE(common_policy_traits<PolicyWithMemcpyTransferAndTrivialDestroy>::
-                  destroy_is_trivial<std::allocator<char>>());
+      common_policy_traits<PolicyWithMemcpyTransfer>::transfer_uses_memcpy());
 }
 
 }  // namespace

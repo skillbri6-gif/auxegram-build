@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <cassert>
-#include <cstddef>
-#include <cstdint>
 #include <iostream>
 #include <random>
 #include <vector>
@@ -33,11 +30,8 @@
 #include "absl/strings/internal/cordz_statistics.h"
 #include "absl/strings/internal/cordz_update_scope.h"
 #include "absl/strings/internal/cordz_update_tracker.h"
-#include "absl/strings/string_view.h"
 #include "absl/synchronization/internal/thread_pool.h"
 #include "absl/synchronization/notification.h"
-#include "absl/time/clock.h"
-#include "absl/time/time.h"
 
 namespace absl {
 ABSL_NAMESPACE_BEGIN
@@ -158,7 +152,7 @@ size_t FairShare(CordRep* rep, size_t ref = 1) {
 // Samples the cord and returns CordzInfo::GetStatistics()
 CordzStatistics SampleCord(CordRep* rep) {
   InlineData cord(rep);
-  CordzInfo::TrackCord(cord, CordzUpdateTracker::kUnknown, 1);
+  CordzInfo::TrackCord(cord, CordzUpdateTracker::kUnknown);
   CordzStatistics stats = cord.cordz_info()->GetCordzStatistics();
   cord.cordz_info()->Untrack();
   return stats;
@@ -444,7 +438,7 @@ TEST(CordzInfoStatisticsTest, ThreadSafety) {
         // Track 0 - 2 cordz infos at a time, providing permutations of 0, 1
         // and 2 CordzHandle and CordzInfo queues being active, with plenty of
         // 'empty to non empty' transitions.
-        InlineData cords[2] = {};
+        InlineData cords[2];
         std::minstd_rand gen;
         std::uniform_int_distribution<int> coin_toss(0, 1);
         std::uniform_int_distribution<int> dice_roll(1, 6);
@@ -486,7 +480,7 @@ TEST(CordzInfoStatisticsTest, ThreadSafety) {
 
                 // 50/50 sample
                 if (coin_toss(gen) != 0) {
-                  CordzInfo::TrackCord(cord, CordzUpdateTracker::kUnknown, 1);
+                  CordzInfo::TrackCord(cord, CordzUpdateTracker::kUnknown);
                 }
               }
             }

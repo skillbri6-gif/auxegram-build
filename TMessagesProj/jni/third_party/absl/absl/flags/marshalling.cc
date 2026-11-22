@@ -17,6 +17,8 @@
 
 #include <stddef.h>
 
+#include <cmath>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -30,6 +32,7 @@
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
@@ -42,7 +45,22 @@ namespace flags_internal {
 // AbslParseFlag specializations for boolean type.
 
 bool AbslParseFlag(absl::string_view text, bool* dst, std::string*) {
-  return SimpleAtob(absl::StripAsciiWhitespace(text), dst);
+  const char* kTrue[] = {"1", "t", "true", "y", "yes"};
+  const char* kFalse[] = {"0", "f", "false", "n", "no"};
+  static_assert(sizeof(kTrue) == sizeof(kFalse), "true_false_equal");
+
+  text = absl::StripAsciiWhitespace(text);
+
+  for (size_t i = 0; i < ABSL_ARRAYSIZE(kTrue); ++i) {
+    if (absl::EqualsIgnoreCase(text, kTrue[i])) {
+      *dst = true;
+      return true;
+    } else if (absl::EqualsIgnoreCase(text, kFalse[i])) {
+      *dst = false;
+      return true;
+    }
+  }
+  return false;  // didn't match a legal input
 }
 
 // --------------------------------------------------------------------
@@ -194,8 +212,27 @@ std::string Unparse(absl::uint128 v) {
   return ss.str();
 }
 
-std::string Unparse(float v) { return absl::StrCat(absl::HighPrecision(v)); }
-std::string Unparse(double v) { return absl::StrCat(absl::HighPrecision(v)); }
+template <typename T>
+std::string UnparseFloatingPointVal(T v) {
+  // digits10 is guaranteed to roundtrip correctly in string -> value -> string
+  // conversions, but may not be enough to represent all the values correctly.
+  std::string digit10_str =
+      absl::StrFormat("%.*g", std::numeric_limits<T>::digits10, v);
+  if (std::isnan(v) || std::isinf(v)) return digit10_str;
+
+  T roundtrip_val = 0;
+  std::string err;
+  if (absl::ParseFlag(digit10_str, &roundtrip_val, &err) &&
+      roundtrip_val == v) {
+    return digit10_str;
+  }
+
+  // max_digits10 is the number of base-10 digits that are necessary to uniquely
+  // represent all distinct values.
+  return absl::StrFormat("%.*g", std::numeric_limits<T>::max_digits10, v);
+}
+std::string Unparse(float v) { return UnparseFloatingPointVal(v); }
+std::string Unparse(double v) { return UnparseFloatingPointVal(v); }
 std::string AbslUnparseFlag(absl::string_view v) { return std::string(v); }
 std::string AbslUnparseFlag(const std::vector<std::string>& v) {
   return absl::StrJoin(v, ",");
@@ -235,7 +272,7 @@ bool AbslParseFlag(absl::string_view text, absl::LogSeverity* dst,
     *dst = absl::LogSeverity::kFatal;
     return true;
   }
-  std::underlying_type_t<absl::LogSeverity> numeric_value;
+  std::underlying_type<absl::LogSeverity>::type numeric_value;
   if (absl::ParseFlag(text, &numeric_value, err)) {
     *dst = static_cast<absl::LogSeverity>(numeric_value);
     return true;

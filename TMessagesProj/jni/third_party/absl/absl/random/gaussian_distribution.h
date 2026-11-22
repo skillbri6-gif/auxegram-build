@@ -24,10 +24,8 @@
 
 #include <cmath>
 #include <cstdint>
-#include <ios>
 #include <istream>
 #include <limits>
-#include <ostream>
 #include <type_traits>
 
 #include "absl/base/config.h"
@@ -59,7 +57,7 @@ class ABSL_DLL gaussian_distribution_base {
                                 bool neg);
 
   // Constants used for the gaussian distribution.
-  static constexpr double kR = 3.442619855899;          // Start of the tail.
+  static constexpr double kR = 3.442619855899;  // Start of the tail.
   static constexpr double kRInv = 0.29047645161474317;  // ~= (1.0 / kR) .
   static constexpr double kV = 9.91256303526217e-3;
   static constexpr uint64_t kMask = 0x07f;
@@ -117,7 +115,7 @@ class gaussian_distribution : random_internal::gaussian_distribution_base {
     result_type stddev_;
 
     static_assert(
-        std::is_floating_point_v<RealType>,
+        std::is_floating_point<RealType>::value,
         "Class-template absl::gaussian_distribution<> must be parameterized "
         "using a floating-point type.");
   };
@@ -198,15 +196,11 @@ std::basic_istream<CharT, Traits>& operator>>(
   using param_type = typename gaussian_distribution<RealType>::param_type;
 
   auto saver = random_internal::make_istream_state_saver(is);
-  const auto mean = random_internal::read_floating_point<result_type>(is);
+  auto mean = random_internal::read_floating_point<result_type>(is);
   if (is.fail()) return is;
-  const auto stddev = random_internal::read_floating_point<result_type>(is);
+  auto stddev = random_internal::read_floating_point<result_type>(is);
   if (!is.fail()) {
-    if (std::isfinite(mean) && std::isfinite(stddev)) {
-      x.param(param_type(mean, stddev));
-    } else {
-      is.setstate(std::ios_base::failbit);
-    }
+    x.param(param_type(mean, stddev));
   }
   return is;
 }
@@ -249,7 +243,7 @@ inline double gaussian_distribution_base::zignor(
         bits);  // U(-1, 1)
     const double x = j * zg_.x[i];
 
-    // Rectangular box. Handles >97% of all cases.
+    // Retangular box. Handles >97% of all cases.
     // For any given box, this handles between 75% and 99% of values.
     // Equivalent to U(01) < (x[i+1] / x[i]), and when i == 0, ~93.5%
     if (std::abs(x) < zg_.x[i + 1]) {

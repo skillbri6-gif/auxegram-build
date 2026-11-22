@@ -18,7 +18,6 @@
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
-#include <iterator>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -28,7 +27,6 @@
 #include "absl/base/config.h"
 #include "absl/base/macros.h"
 #include "absl/strings/cord.h"
-#include "absl/strings/internal/str_format/constexpr_parser.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -67,8 +65,8 @@ TEST_F(FormatEntryPointTest, UntypedFormat) {
     "",
     "a",
     "%80d",
-#if !defined(_MSC_VER) && !defined(__ANDROID__)
-    // MSVC and Android don't support positional syntax.
+#if !defined(_MSC_VER) && !defined(__ANDROID__) && !defined(__native_client__)
+    // MSVC, NaCL and Android don't support positional syntax.
     "complicated multipart %% %1$d format %1$0999d",
 #endif  // _MSC_VER
   };
@@ -268,8 +266,8 @@ TEST_F(FormatEntryPointTest, Stream) {
     "a",
     "%80d",
     "%d %u %c %s %f %g",
-#if !defined(_MSC_VER) && !defined(__ANDROID__)
-    // MSVC and Android don't support positional syntax.
+#if !defined(_MSC_VER) && !defined(__ANDROID__) && !defined(__native_client__)
+    // MSVC, NaCL and Android don't support positional syntax.
     "complicated multipart %% %1$d format %1$080d",
 #endif  // _MSC_VER
   };
@@ -302,7 +300,7 @@ TEST_F(FormatEntryPointTest, StreamWithV) {
   };
 
   std::string buf(4096, '\0');
-  for (auto i = 0; i < std::size(formats); ++i) {
+  for (auto i = 0; i < ABSL_ARRAYSIZE(formats); ++i) {
     const auto parsed =
         ParsedFormat<'v', 'u', 'c', 'v', 'f', 'v'>::NewAllowIgnored(formats[i]);
     std::ostringstream oss;
@@ -518,24 +516,8 @@ TEST_F(FormatEntryPointTest, SNPrintF) {
   EXPECT_EQ(result, 17);
   EXPECT_EQ(std::string(buffer), "NUMBER: 1234567");
 
-  // Test that the buffer is never written to if the size is zero.
-  buffer[0] = '\0';
-  result = SNPrintF(buffer, 0, "Just checking the %s of the output.", "size");
+  result = SNPrintF(nullptr, 0, "Just checking the %s of the output.", "size");
   EXPECT_EQ(result, 37);
-  EXPECT_EQ(buffer[0], '\0');
-}
-
-TEST_F(FormatEntryPointTest, SNPrintFTooLarge) {
-  // Formatting more than INT_MAX bytes cannot be represented in the int return
-  // value, so the call reports an error via errno rather than returning a
-  // truncated (and possibly negative) count, matching FPrintF. A zero size
-  // means nothing is written to the buffer.
-  char buffer[16];
-  int width = 2000000000;
-  errno = 0;
-  int result = SNPrintF(buffer, 0, "%*d %*d", width, 0, width, 0);
-  EXPECT_LT(result, 0);
-  EXPECT_EQ(errno, EFBIG);
 }
 
 TEST_F(FormatEntryPointTest, SNPrintFWithV) {
@@ -563,11 +545,8 @@ TEST_F(FormatEntryPointTest, SNPrintFWithV) {
 
   std::string size = "size";
 
-  // Test that the buffer is never written to if the size is zero.
-  buffer[0] = '\0';
-  result = SNPrintF(buffer, 0, "Just checking the %v of the output.", size);
+  result = SNPrintF(nullptr, 0, "Just checking the %v of the output.", size);
   EXPECT_EQ(result, 37);
-  EXPECT_EQ(buffer[0], '\0');
 }
 
 TEST(StrFormat, BehavesAsDocumented) {

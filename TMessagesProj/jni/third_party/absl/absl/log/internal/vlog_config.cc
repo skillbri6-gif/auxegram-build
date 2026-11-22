@@ -19,66 +19,58 @@
 #include <algorithm>
 #include <atomic>
 #include <functional>
-#include <optional>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/attributes.h"
 #include "absl/base/config.h"
-#include "absl/base/internal/scheduling_mode.h"
+#include "absl/base/const_init.h"
 #include "absl/base/internal/spinlock.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/log/internal/fnmatch.h"
+#include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/optional.h"
 
 namespace absl {
 ABSL_NAMESPACE_BEGIN
 namespace log_internal {
 
 namespace {
-
-#ifdef _WIN32
-constexpr char kPathSeparators[] = "/\\";
-#else
-constexpr char kPathSeparators[] = "/";
-#endif
-
 bool ModuleIsPath(absl::string_view module_pattern) {
-  return module_pattern.find_first_of(kPathSeparators) != module_pattern.npos;
+#ifdef _WIN32
+  return module_pattern.find_first_of("/\\") != module_pattern.npos;
+#else
+  return module_pattern.find('/') != module_pattern.npos;
+#endif
 }
-
-absl::string_view Basename(absl::string_view file) {
-  auto sep = file.find_last_of(kPathSeparators);
-  if (sep != file.npos) {
-    file.remove_prefix(sep + 1);
-  }
-  return file;
-}
-
 }  // namespace
 
-bool VLogSite::SlowIsEnabled(int level) {
-  int stale_v = v_.load(std::memory_order_relaxed);
+bool VLogSite::SlowIsEnabled(int stale_v, int level) {
   if (ABSL_PREDICT_TRUE(stale_v != kUninitialized)) {
-    return stale_v >= level;
+    // Because of the prerequisites to this function, we know that stale_v is
+    // either uninitialized or >= level. If it's not uninitialized, that means
+    // it must be >= level, thus we should log.
+    return true;
   }
   stale_v = log_internal::RegisterAndInitialize(this);
   return ABSL_PREDICT_FALSE(stale_v >= level);
 }
 
-bool VLogSite::SlowIsEnabled0() { return SlowIsEnabled(0); }
-bool VLogSite::SlowIsEnabled1() { return SlowIsEnabled(1); }
-bool VLogSite::SlowIsEnabled2() { return SlowIsEnabled(2); }
-bool VLogSite::SlowIsEnabled3() { return SlowIsEnabled(3); }
-bool VLogSite::SlowIsEnabled4() { return SlowIsEnabled(4); }
-bool VLogSite::SlowIsEnabled5() { return SlowIsEnabled(5); }
+bool VLogSite::SlowIsEnabled0(int stale_v) { return SlowIsEnabled(stale_v, 0); }
+bool VLogSite::SlowIsEnabled1(int stale_v) { return SlowIsEnabled(stale_v, 1); }
+bool VLogSite::SlowIsEnabled2(int stale_v) { return SlowIsEnabled(stale_v, 2); }
+bool VLogSite::SlowIsEnabled3(int stale_v) { return SlowIsEnabled(stale_v, 3); }
+bool VLogSite::SlowIsEnabled4(int stale_v) { return SlowIsEnabled(stale_v, 4); }
+bool VLogSite::SlowIsEnabled5(int stale_v) { return SlowIsEnabled(stale_v, 5); }
 
 namespace {
 struct VModuleInfo final {
@@ -98,16 +90,16 @@ struct VModuleInfo final {
 // To avoid problems with the heap checker which calls into `VLOG`, `mutex` must
 // be a `SpinLock` that prevents fiber scheduling instead of a `Mutex`.
 ABSL_CONST_INIT absl::base_internal::SpinLock mutex(
-    absl::base_internal::SCHEDULE_KERNEL_ONLY);
+    absl::kConstInit, absl::base_internal::SCHEDULE_KERNEL_ONLY);
 
 // `GetUpdateSitesMutex()` serializes updates to all of the sites (i.e. those in
 // `site_list_head`) themselves.
-absl::Mutex& GetUpdateSitesMutex() {
+absl::Mutex* GetUpdateSitesMutex() {
   // Chromium requires no global destructors, so we can't use the
   // absl::kConstInit idiom since absl::Mutex as a non-trivial destructor.
   static absl::NoDestructor<absl::Mutex> update_sites_mutex ABSL_ACQUIRED_AFTER(
       mutex);
-  return *update_sites_mutex;
+  return update_sites_mutex.get();
 }
 
 ABSL_CONST_INIT int global_v ABSL_GUARDED_BY(mutex) = 0;
@@ -137,9 +129,21 @@ int VLogLevel(absl::string_view file, const std::vector<VModuleInfo>* infos,
   // parsing flags).  We can't allocate in `VLOG`, so we treat null as empty
   // here and press on.
   if (!infos || infos->empty()) return current_global_v;
+  // Get basename for file
+  absl::string_view basename = file;
+  {
+    const size_t sep = basename.rfind('/');
+    if (sep != basename.npos) {
+      basename.remove_prefix(sep + 1);
+#ifdef _WIN32
+    } else {
+      const size_t sep = basename.rfind('\\');
+      if (sep != basename.npos) basename.remove_prefix(sep + 1);
+#endif
+    }
+  }
 
-  absl::string_view stem = file;
-  absl::string_view stem_basename = Basename(stem);
+  absl::string_view stem = file, stem_basename = basename;
   {
     const size_t sep = stem_basename.find('.');
     if (sep != stem_basename.npos) {
@@ -155,10 +159,10 @@ int VLogLevel(absl::string_view file, const std::vector<VModuleInfo>* infos,
       // If there are any slashes in the pattern, try to match the full
       // name.
       if (FNMatch(info.module_pattern, stem)) {
-        return info.vlog_level;
+        return info.vlog_level == kUseFlag ? current_global_v : info.vlog_level;
       }
     } else if (FNMatch(info.module_pattern, stem_basename)) {
-      return info.vlog_level;
+      return info.vlog_level == kUseFlag ? current_global_v : info.vlog_level;
     }
   }
 
@@ -185,7 +189,7 @@ int AppendVModuleLocked(absl::string_view module_pattern, int log_level)
 // Allocates memory.
 int PrependVModuleLocked(absl::string_view module_pattern, int log_level)
     ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex) {
-  std::optional<int> old_log_level;
+  absl::optional<int> old_log_level;
   for (const auto& info : get_vmodule_info()) {
     if (FNMatch(info.module_pattern, module_pattern)) {
       old_log_level = info.vlog_level;
@@ -203,14 +207,7 @@ int PrependVModuleLocked(absl::string_view module_pattern, int log_level)
   get_vmodule_info().erase(
       std::remove_if(++iter, get_vmodule_info().end(),
                      [module_pattern](const VModuleInfo& info) {
-                       // Remove the previous pattern if it is less generic than
-                       // the new one. For example, if the new pattern
-                       // `module_pattern` is "foo*" and the previous pattern
-                       // `info.module_pattern` is "foo", we should remove the
-                       // previous pattern. Because the new pattern "foo*" will
-                       // match all the files that the previous pattern "foo"
-                       // matches.
-                       return FNMatch(module_pattern, info.module_pattern);
+                       return FNMatch(info.module_pattern, module_pattern);
                      }),
       get_vmodule_info().cend());
   return old_log_level.value_or(global_v);
@@ -218,7 +215,7 @@ int PrependVModuleLocked(absl::string_view module_pattern, int log_level)
 }  // namespace
 
 int VLogLevel(absl::string_view file) ABSL_LOCKS_EXCLUDED(mutex) {
-  absl::base_internal::SpinLockHolder l(mutex);
+  absl::base_internal::SpinLockHolder l(&mutex);
   return VLogLevel(file, vmodule_info, global_v);
 }
 
@@ -263,7 +260,7 @@ void UpdateVLogSites() ABSL_UNLOCK_FUNCTION(mutex)
   // have to wait on all updates in order to acquire `mutex` and initialize
   // themselves.
   absl::MutexLock ul(GetUpdateSitesMutex());
-  mutex.unlock();
+  mutex.Unlock();
   VLogSite* n = site_list_head.load(std::memory_order_seq_cst);
   // Because sites are added to the list in the order they are executed, there
   // tend to be clusters of entries with the same file.
@@ -295,7 +292,7 @@ void UpdateVModule(absl::string_view vmodule)
     if (!absl::SimpleAtoi(glob_level.substr(eq + 1), &level)) continue;
     glob_levels.emplace_back(glob, level);
   }
-  mutex.lock();  // unlocked by UpdateVLogSites().
+  mutex.Lock();  // Unlocked by UpdateVLogSites().
   get_vmodule_info().clear();
   for (const auto& it : glob_levels) {
     const absl::string_view glob = it.first;
@@ -307,10 +304,10 @@ void UpdateVModule(absl::string_view vmodule)
 
 int UpdateGlobalVLogLevel(int v)
     ABSL_LOCKS_EXCLUDED(mutex, GetUpdateSitesMutex()) {
-  mutex.lock();  // unlocked by UpdateVLogSites().
+  mutex.Lock();  // Unlocked by UpdateVLogSites().
   const int old_global_v = global_v;
   if (v == global_v) {
-    mutex.unlock();
+    mutex.Unlock();
     return old_global_v;
   }
   global_v = v;
@@ -320,7 +317,7 @@ int UpdateGlobalVLogLevel(int v)
 
 int PrependVModule(absl::string_view module_pattern, int log_level)
     ABSL_LOCKS_EXCLUDED(mutex, GetUpdateSitesMutex()) {
-  mutex.lock();  // unlocked by UpdateVLogSites().
+  mutex.Lock();  // Unlocked by UpdateVLogSites().
   int old_v = PrependVModuleLocked(module_pattern, log_level);
   UpdateVLogSites();
   return old_v;

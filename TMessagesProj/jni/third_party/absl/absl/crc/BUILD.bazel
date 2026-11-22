@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load(
     "//absl:copts/configure_copts.bzl",
     "ABSL_DEFAULT_COPTS",
@@ -34,6 +31,21 @@ package(
 licenses(["notice"])
 
 cc_library(
+    name = "cpu_detect",
+    srcs = [
+        "internal/cpu_detect.cc",
+    ],
+    hdrs = ["internal/cpu_detect.h"],
+    copts = ABSL_DEFAULT_COPTS,
+    linkopts = ABSL_DEFAULT_LINKOPTS,
+    visibility = ["//visibility:private"],
+    deps = [
+        "//absl/base",
+        "//absl/base:config",
+    ],
+)
+
+cc_library(
     name = "crc_internal",
     srcs = [
         "internal/crc.cc",
@@ -48,9 +60,9 @@ cc_library(
     linkopts = ABSL_DEFAULT_LINKOPTS,
     visibility = ["//visibility:private"],
     deps = [
+        ":cpu_detect",
         "//absl/base:config",
         "//absl/base:core_headers",
-        "//absl/base:cpu_detect",
         "//absl/base:endian",
         "//absl/base:prefetch",
         "//absl/base:raw_logging_internal",
@@ -77,15 +89,15 @@ cc_library(
     linkopts = ABSL_DEFAULT_LINKOPTS,
     visibility = ["//visibility:public"],
     deps = [
+        ":cpu_detect",
         ":crc_internal",
         ":non_temporal_memcpy",
         "//absl/base:config",
         "//absl/base:core_headers",
-        "//absl/base:cpu_detect",
         "//absl/base:endian",
         "//absl/base:prefetch",
+        "//absl/strings",
         "//absl/strings:str_format",
-        "//absl/strings:string_view",
     ],
 )
 
@@ -99,9 +111,8 @@ cc_test(
         ":crc32c",
         "//absl/strings",
         "//absl/strings:str_format",
-        "//absl/strings:string_view",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -110,6 +121,7 @@ cc_library(
     hdrs = ["internal/non_temporal_arm_intrinsics.h"],
     copts = ABSL_DEFAULT_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
+    visibility = ["//visibility:private"],
     deps = [
         "//absl/base:config",
     ],
@@ -120,8 +132,7 @@ cc_library(
     hdrs = ["internal/non_temporal_memcpy.h"],
     copts = ABSL_DEFAULT_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
-    visibility = [
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":non_temporal_arm_intrinsics",
         "//absl/base:config",
@@ -139,16 +150,12 @@ cc_test(
     visibility = ["//visibility:private"],
     deps = [
         ":crc32c",
-        ":crc_internal",
-        "//absl/base:config",
-        "//absl/base:core_headers",
         "//absl/memory",
         "//absl/random",
         "//absl/random:distributions",
         "//absl/strings",
-        "//absl/strings:string_view",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -160,8 +167,8 @@ cc_test(
     visibility = ["//visibility:private"],
     deps = [
         ":non_temporal_memcpy",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -175,8 +182,8 @@ cc_library(
     deps = [
         ":crc32c",
         "//absl/base:config",
-        "//absl/base:no_destructor",
         "//absl/numeric:bits",
+        "//absl/strings",
     ],
 )
 
@@ -189,14 +196,14 @@ cc_test(
     deps = [
         ":crc32c",
         ":crc_cord_state",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
 cc_binary(
     name = "crc32c_benchmark",
-    testonly = True,
+    testonly = 1,
     srcs = ["crc32c_benchmark.cc"],
     copts = ABSL_TEST_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
@@ -206,7 +213,8 @@ cc_binary(
     visibility = ["//visibility:private"],
     deps = [
         ":crc32c",
-        "//absl/strings:string_view",
-        "@google_benchmark//:benchmark_main",
+        "//absl/memory",
+        "//absl/strings",
+        "@com_github_google_benchmark//:benchmark_main",
     ],
 )

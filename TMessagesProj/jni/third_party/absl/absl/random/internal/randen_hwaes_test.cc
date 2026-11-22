@@ -14,14 +14,13 @@
 
 #include "absl/random/internal/randen_hwaes.h"
 
-#include <cstdint>
-#include <cstring>
-
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/log/log.h"
 #include "absl/random/internal/platform.h"
 #include "absl/random/internal/randen_detect.h"
 #include "absl/random/internal/randen_traits.h"
+#include "absl/strings/str_format.h"
 
 namespace {
 
@@ -90,7 +89,7 @@ int main(int argc, char* argv[]) {
   LOG(INFO) << "HasRandenHwAesImplementation = " << x;
 
   int y = absl::random_internal::CPUSupportsRandenHwAes();
-  LOG(INFO) << "CPUSupportsRandenHwAes = " << y;
+  LOG(INFO) << "CPUSupportsRandenHwAes = " << x;
 
   if (!x || !y) {
     LOG(INFO) << "Skipping Randen HWAES tests.";

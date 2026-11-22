@@ -14,28 +14,11 @@
 
 #include "absl/container/node_hash_map.h"
 
-#include <cstddef>
-#include <new>
-#include <string>
-#include <tuple>
-#include <type_traits>
-#include <utility>
-#include <vector>
-
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
-#include "absl/base/config.h"
-#include "absl/container/internal/hash_policy_testing.h"
 #include "absl/container/internal/tracked.h"
 #include "absl/container/internal/unordered_map_constructor_test.h"
 #include "absl/container/internal/unordered_map_lookup_test.h"
 #include "absl/container/internal/unordered_map_members_test.h"
 #include "absl/container/internal/unordered_map_modifiers_test.h"
-#include "absl/hash/hash.h"
-
-#if ABSL_INTERNAL_CPLUSPLUS_LANG >= 202002L
-#include <ranges>  // NOLINT(build/c++20)
-#endif
 
 namespace absl {
 ABSL_NAMESPACE_BEGIN
@@ -46,7 +29,6 @@ using ::testing::Field;
 using ::testing::IsEmpty;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
-using ::testing::UnorderedElementsAreArray;
 
 using MapTypes = ::testing::Types<
     absl::node_hash_map<int, int, StatefulTestingHash, StatefulTestingEqual,
@@ -78,6 +60,7 @@ TEST(NodeHashMap, Emplace) {
   ASSERT_EQ(0, t.num_moves());
   ASSERT_EQ(1, t.num_copies());
 
+  const std::string ca("a");
   m.emplace(a, t);
   ASSERT_EQ(0, t.num_moves());
   ASSERT_EQ(1, t.num_copies());
@@ -196,7 +179,7 @@ TEST(NodeHashMap, MergeExtractInsert) {
 
   // NonMovableKey is neither copyable nor movable. We should still be able to
   // move nodes around.
-  static_assert(!std::is_move_constructible_v<NonMovableKey>);
+  static_assert(!std::is_move_constructible<NonMovableKey>::value, "");
   set1.merge(set2);
 
   EXPECT_THAT(set1,
@@ -274,6 +257,8 @@ TEST(NodeHashMap, EraseIf) {
   }
 }
 
+// This test requires std::launder for mutable key access in node handles.
+#if defined(__cpp_lib_launder) && __cpp_lib_launder >= 201606
 TEST(NodeHashMap, NodeHandleMutableKeyAccess) {
   node_hash_map<std::string, std::string> map;
 
@@ -285,6 +270,7 @@ TEST(NodeHashMap, NodeHandleMutableKeyAccess) {
 
   EXPECT_THAT(map, testing::ElementsAre(Pair("key", "mapped")));
 }
+#endif
 
 TEST(NodeHashMap, RecursiveTypeCompiles) {
   struct RecursiveType {
@@ -293,43 +279,6 @@ TEST(NodeHashMap, RecursiveTypeCompiles) {
   RecursiveType t;
   t.m[0] = RecursiveType{};
 }
-
-TEST(NodeHashMap, NonStandardLayoutValueUsesTypeErasedSlotFns) {
-  using Policy = NodeHashMapPolicy<int, NonStandardLayout>;
-  EXPECT_NE((Policy::get_hash_slot_fn<absl::Hash<int>, /*kIsAbsl=*/true,
-                                      /*kSeedShift=*/0>()),
-            nullptr);
-}
-
-#if defined(__cpp_lib_containers_ranges) && \
-    __cpp_lib_containers_ranges >= 202202L
-TEST(NodeHashMap, FromRange) {
-  std::vector<std::pair<int, int>> v = {{1, 2}, {3, 4}, {5, 6}};
-  absl::node_hash_map<int, int> m(std::from_range, v);
-  EXPECT_THAT(m, UnorderedElementsAre(Pair(1, 2), Pair(3, 4), Pair(5, 6)));
-}
-
-TEST(NodeHashMap, FromRangeWithAllocator) {
-  std::vector<std::pair<int, int>> v = {{1, 2}, {3, 4}, {5, 6}};
-  absl::node_hash_map<int, int,
-                      absl::container_internal::hash_default_hash<int>,
-                      absl::container_internal::hash_default_eq<int>,
-                      Alloc<std::pair<const int, int>>>
-      m(std::from_range, v, 0, Alloc<std::pair<const int, int>>());
-  EXPECT_THAT(m, UnorderedElementsAre(Pair(1, 2), Pair(3, 4), Pair(5, 6)));
-}
-
-TEST(NodeHashMap, FromRangeWithHasherAndAllocator) {
-  std::vector<std::pair<int, int>> v = {{1, 2}, {3, 4}, {5, 6}};
-  using TestingHash = absl::container_internal::StatefulTestingHash;
-  absl::node_hash_map<int, int, TestingHash,
-                      absl::container_internal::hash_default_eq<int>,
-                      Alloc<std::pair<const int, int>>>
-      m(std::from_range, v, 0, TestingHash{},
-        Alloc<std::pair<const int, int>>());
-  EXPECT_THAT(m, UnorderedElementsAre(Pair(1, 2), Pair(3, 4), Pair(5, 6)));
-}
-#endif
 
 }  // namespace
 }  // namespace container_internal

@@ -21,15 +21,15 @@
 #include <cstring>
 #include <string>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/console.h>
+#endif
+
 #include "absl/base/attributes.h"
 #include "absl/base/config.h"
 #include "absl/base/internal/atomic_hook.h"
 #include "absl/base/internal/errno_saver.h"
 #include "absl/base/log_severity.h"
-
-#ifdef __EMSCRIPTEN__
-#include <emscripten/console.h>
-#endif
 
 // We know how to perform low-level writes to stderr in POSIX and Windows.  For
 // these platforms, we define the token ABSL_LOW_LEVEL_WRITE_SUPPORTED.
@@ -41,8 +41,9 @@
 //
 // This preprocessor token is also defined in raw_io.cc.  If you need to copy
 // this, consider moving both to config.h instead.
-#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) ||     \
-    defined(__hexagon__) || defined(__Fuchsia__) || defined(__OpenBSD__) || \
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || \
+    defined(__hexagon__) || defined(__Fuchsia__) ||                     \
+    defined(__native_client__) || defined(__OpenBSD__) ||               \
     defined(__EMSCRIPTEN__) || defined(__ASYLO__)
 
 #include <unistd.h>
@@ -89,13 +90,13 @@ constexpr char kTruncated[] = " ... (message truncated)\n";
 // consumed bytes, and return whether the message fit without truncation.  If
 // truncation occurred, if possible leave room in the buffer for the message
 // kTruncated[].
-ABSL_PRINTF_ATTRIBUTE(3, 0)
-bool VADoRawLog(char** buf, int* size, const char* format, va_list ap);
+bool VADoRawLog(char** buf, int* size, const char* format, va_list ap)
+    ABSL_PRINTF_ATTRIBUTE(3, 0);
 bool VADoRawLog(char** buf, int* size, const char* format, va_list ap) {
   if (*size < 0) return false;
   int n = vsnprintf(*buf, static_cast<size_t>(*size), format, ap);
   bool result = true;
-  if (n < 0 || n >= *size) {
+  if (n < 0 || n > *size) {
     result = false;
     if (static_cast<size_t>(*size) > sizeof(kTruncated)) {
       n = *size - static_cast<int>(sizeof(kTruncated));
@@ -107,6 +108,7 @@ bool VADoRawLog(char** buf, int* size, const char* format, va_list ap) {
   *buf += n;
   return result;
 }
+#endif  // ABSL_LOW_LEVEL_WRITE_SUPPORTED
 
 constexpr int kLogBufSize = 3000;
 
@@ -116,15 +118,15 @@ constexpr int kLogBufSize = 3000;
 // Helper for RawLog below.
 // *DoRawLog writes to *buf of *size and move them past the written portion.
 // It returns true iff there was no overflow or error.
-ABSL_PRINTF_ATTRIBUTE(3, 4)
-bool DoRawLog(char** buf, int* size, const char* format, ...);
+bool DoRawLog(char** buf, int* size, const char* format, ...)
+    ABSL_PRINTF_ATTRIBUTE(3, 4);
 bool DoRawLog(char** buf, int* size, const char* format, ...) {
   if (*size < 0) return false;
   va_list ap;
   va_start(ap, format);
   int n = vsnprintf(*buf, static_cast<size_t>(*size), format, ap);
   va_end(ap);
-  if (n < 0 || n >= *size) return false;
+  if (n < 0 || n > *size) return false;
   *size -= n;
   *buf += n;
   return true;
@@ -135,16 +137,6 @@ bool DefaultLogFilterAndPrefix(absl::LogSeverity, const char* file, int line,
   DoRawLog(buf, buf_size, "[%s : %d] RAW: ", file, line);
   return true;
 }
-#else   // !ABSL_LOW_LEVEL_WRITE_SUPPORTED
-// Nothing is formatted or written; the buffer only holds the NUL terminator
-// the abort hook expects.
-constexpr int kLogBufSize = 1;
-
-bool DefaultLogFilterAndPrefix(absl::LogSeverity, const char*, int, char**,
-                               int*) {
-  return true;
-}
-#endif  // ABSL_LOW_LEVEL_WRITE_SUPPORTED
 
 ABSL_INTERNAL_ATOMIC_HOOK_ATTRIBUTES
 absl::base_internal::AtomicHook<LogFilterAndPrefixHook>
@@ -152,15 +144,13 @@ absl::base_internal::AtomicHook<LogFilterAndPrefixHook>
 ABSL_INTERNAL_ATOMIC_HOOK_ATTRIBUTES
 absl::base_internal::AtomicHook<AbortHook> abort_hook;
 
-ABSL_PRINTF_ATTRIBUTE(4, 0)
 void RawLogVA(absl::LogSeverity severity, const char* file, int line,
-              const char* format, va_list ap);
+              const char* format, va_list ap) ABSL_PRINTF_ATTRIBUTE(4, 0);
 void RawLogVA(absl::LogSeverity severity, const char* file, int line,
               const char* format, va_list ap) {
   char buffer[kLogBufSize];
   char* buf = buffer;
   int size = sizeof(buffer);
-  buffer[0] = '\0';
 #ifdef ABSL_LOW_LEVEL_WRITE_SUPPORTED
   bool enabled = true;
 #else
@@ -168,15 +158,13 @@ void RawLogVA(absl::LogSeverity severity, const char* file, int line,
 #endif
 
 #ifdef ABSL_MIN_LOG_LEVEL
-  if (severity < static_cast<absl::LogSeverityAtLeast>(ABSL_MIN_LOG_LEVEL) &&
+  if (severity < static_cast<absl::LogSeverity>(ABSL_MIN_LOG_LEVEL) &&
       severity < absl::LogSeverity::kFatal) {
     enabled = false;
   }
 #endif
 
-  if (enabled) {
-    enabled = log_filter_and_prefix_hook(severity, file, line, &buf, &size);
-  }
+  enabled = log_filter_and_prefix_hook(severity, file, line, &buf, &size);
   const char* const prefix_end = buf;
 
 #ifdef ABSL_LOW_LEVEL_WRITE_SUPPORTED
@@ -187,11 +175,12 @@ void RawLogVA(absl::LogSeverity severity, const char* file, int line,
     } else {
       DoRawLog(&buf, &size, "%s", kTruncated);
     }
-    AsyncSignalSafeWriteError(buffer, static_cast<size_t>(buf - buffer));
+    AsyncSignalSafeWriteError(buffer, strlen(buffer));
   }
 #else
   static_cast<void>(format);
   static_cast<void>(ap);
+  static_cast<void>(enabled);
 #endif
 
   // Abort the process after logging a FATAL message, even if the output itself

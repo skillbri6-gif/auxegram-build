@@ -18,16 +18,14 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <string>
-#include <type_traits>
 
 #include "absl/base/config.h"
 #include "absl/base/internal/raw_logging.h"
 #include "absl/base/nullability.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
-#include "absl/strings/internal/append_and_overwrite.h"
+#include "absl/strings/internal/resize_uninitialized.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -36,23 +34,9 @@ namespace absl {
 ABSL_NAMESPACE_BEGIN
 namespace substitute_internal {
 
-// Checked addition to avoid overflow on 32-bit. (In 64-bit the callers wouldn't
-// get anywhere close to the limit given that 2^64 bytes of memory is beyond
-// anything physically possible.)
-// Note that we don't declare the parameters as size_t in order to avoid
-// accidental implicit conversions.
-template <int&..., typename T>
-[[nodiscard]] std::enable_if_t<std::is_same_v<T, size_t>, T> CheckedAdd(T a,
-                                                                        T b) {
-  ABSL_INTERNAL_CHECK(b <= (std::numeric_limits<T>::max)() - a,
-                      "unsigned integer overflow");
-  return a + b;
-}
-
-void SubstituteAndAppendArray(std::string* absl_nonnull output,
-                              absl::string_view format,
-                              const absl::string_view* absl_nullable args_array,
-                              size_t num_args) {
+void SubstituteAndAppendArray(
+    absl::Nonnull<std::string*> output, absl::string_view format,
+    absl::Nullable<const absl::string_view*> args_array, size_t num_args) {
   // Determine total size needed.
   size_t size = 0;
   for (size_t i = 0; i < format.size(); i++) {
@@ -78,10 +62,10 @@ void SubstituteAndAppendArray(std::string* absl_nonnull output,
 #endif
           return;
         }
-        size = CheckedAdd(size, args_array[index].size());
+        size += args_array[index].size();
         ++i;  // Skip next char.
       } else if (format[i + 1] == '$') {
-        size = CheckedAdd(size, size_t{1});
+        ++size;
         ++i;  // Skip next char.
       } else {
 #ifndef NDEBUG
@@ -92,39 +76,36 @@ void SubstituteAndAppendArray(std::string* absl_nonnull output,
         return;
       }
     } else {
-      size = CheckedAdd(size, size_t{1});
+      ++size;
     }
   }
 
   if (size == 0) return;
 
   // Build the string.
-  ABSL_INTERNAL_CHECK(size <= output->max_size() - output->size(),
-                      "Exceeds std::string::max_size()");
-  strings_internal::StringAppendAndOverwrite(
-      *output, size, [format, args_array](char* const buf, size_t buf_size) {
-        char* target = buf;
-        for (size_t i = 0; i < format.size(); i++) {
-          if (format[i] == '$') {
-            if (absl::ascii_isdigit(
-                    static_cast<unsigned char>(format[i + 1]))) {
-              const absl::string_view src = args_array[format[i + 1] - '0'];
-              target = std::copy(src.begin(), src.end(), target);
-              ++i;  // Skip next char.
-            } else if (format[i + 1] == '$') {
-              *target++ = '$';
-              ++i;  // Skip next char.
-            }
-          } else {
-            *target++ = format[i];
-          }
-        }
-        assert(target == buf + buf_size);
-        return buf_size;
-      });
+  size_t original_size = output->size();
+  strings_internal::STLStringResizeUninitializedAmortized(output,
+                                                          original_size + size);
+  char* target = &(*output)[original_size];
+  for (size_t i = 0; i < format.size(); i++) {
+    if (format[i] == '$') {
+      if (absl::ascii_isdigit(static_cast<unsigned char>(format[i + 1]))) {
+        const absl::string_view src = args_array[format[i + 1] - '0'];
+        target = std::copy(src.begin(), src.end(), target);
+        ++i;  // Skip next char.
+      } else if (format[i + 1] == '$') {
+        *target++ = '$';
+        ++i;  // Skip next char.
+      }
+    } else {
+      *target++ = format[i];
+    }
+  }
+
+  assert(target == output->data() + output->size());
 }
 
-Arg::Arg(const void* absl_nullable value) {
+Arg::Arg(absl::Nullable<const void*> value) {
   static_assert(sizeof(scratch_) >= sizeof(value) * 2 + 2,
                 "fix sizeof(scratch_)");
   if (value == nullptr) {

@@ -14,9 +14,6 @@
 # limitations under the License.
 #
 
-load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load(
     "//absl:copts/configure_copts.bzl",
     "ABSL_DEFAULT_COPTS",
@@ -25,7 +22,7 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:private"],
+    default_visibility = ["//visibility:public"],
     features = [
         "header_modules",
         "layering_check",
@@ -44,20 +41,18 @@ cc_library(
     hdrs = ["hash.h"],
     copts = ABSL_DEFAULT_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
-    visibility = ["//visibility:public"],
     deps = [
         ":city",
-        ":weakly_mixed_integer",
+        ":low_level_hash",
         "//absl/base:config",
         "//absl/base:core_headers",
         "//absl/base:endian",
-        "//absl/base:prefetch",
         "//absl/container:fixed_array",
         "//absl/functional:function_ref",
         "//absl/meta:type_traits",
         "//absl/numeric:bits",
         "//absl/numeric:int128",
-        "//absl/strings:string_view",
+        "//absl/strings",
         "//absl/types:optional",
         "//absl/types:variant",
         "//absl/utility",
@@ -66,44 +61,46 @@ cc_library(
 
 cc_library(
     name = "hash_testing",
-    testonly = True,
+    testonly = 1,
     hdrs = ["hash_testing.h"],
     linkopts = ABSL_DEFAULT_LINKOPTS,
-    visibility = ["//visibility:public"],
     deps = [
         ":spy_hash_state",
-        "//absl/base:config",
         "//absl/meta:type_traits",
         "//absl/strings",
         "//absl/types:variant",
-        "@googletest//:gtest",
+        "@com_google_googletest//:gtest",
     ],
 )
 
 cc_test(
     name = "hash_test",
-    size = "large",
     srcs = [
         "hash_test.cc",
         "internal/hash_test.h",
     ],
     copts = ABSL_TEST_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
-    shard_count = 4,
     deps = [
         ":hash",
         ":hash_testing",
         ":spy_hash_state",
         "//absl/base:config",
+        "//absl/base:core_headers",
+        "//absl/container:btree",
         "//absl/container:flat_hash_map",
         "//absl/container:flat_hash_set",
-        "//absl/numeric:bits",
-        "//absl/strings",
-        "//absl/strings:cord",
+        "//absl/container:node_hash_map",
+        "//absl/container:node_hash_set",
+        "//absl/memory",
+        "//absl/meta:type_traits",
+        "//absl/numeric:int128",
         "//absl/strings:cord_test_helpers",
         "//absl/strings:string_view",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
+        "//absl/types:optional",
+        "//absl/types:variant",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -124,14 +121,14 @@ cc_test(
         "//absl/container:flat_hash_set",
         "//absl/container:node_hash_map",
         "//absl/container:node_hash_set",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
 cc_binary(
     name = "hash_benchmark",
-    testonly = True,
+    testonly = 1,
     srcs = ["hash_benchmark.cc"],
     copts = ABSL_TEST_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
@@ -139,26 +136,25 @@ cc_binary(
     visibility = ["//visibility:private"],
     deps = [
         ":hash",
+        "//absl/base:core_headers",
         "//absl/container:flat_hash_set",
         "//absl/random",
+        "//absl/strings",
         "//absl/strings:cord",
         "//absl/strings:cord_test_helpers",
-        "//absl/strings:string_view",
-        "@google_benchmark//:benchmark_main",
+        "@com_github_google_benchmark//:benchmark_main",
     ],
 )
 
 cc_library(
     name = "spy_hash_state",
-    testonly = True,
+    testonly = 1,
     hdrs = ["internal/spy_hash_state.h"],
     copts = ABSL_DEFAULT_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
     visibility = ["//visibility:private"],
     deps = [
         ":hash",
-        ":weakly_mixed_integer",
-        "//absl/base:config",
         "//absl/strings",
         "//absl/strings:str_format",
     ],
@@ -172,14 +168,10 @@ cc_library(
     ],
     copts = ABSL_DEFAULT_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
-    visibility = [
-        "//absl/hash:__pkg__",
-    ],
     deps = [
         "//absl/base:config",
         "//absl/base:core_headers",
         "//absl/base:endian",
-        "//absl/numeric:bits",
     ],
 )
 
@@ -190,55 +182,23 @@ cc_test(
     linkopts = ABSL_DEFAULT_LINKOPTS,
     deps = [
         ":city",
-        "//absl/base:config",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
 cc_library(
-    name = "weakly_mixed_integer",
-    hdrs = ["internal/weakly_mixed_integer.h"],
+    name = "low_level_hash",
+    srcs = ["internal/low_level_hash.cc"],
+    hdrs = ["internal/low_level_hash.h"],
     copts = ABSL_DEFAULT_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
-    visibility = [
-        "//absl/container:__pkg__",
-        "//absl/strings:__pkg__",
-        "//absl/types:__pkg__",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//absl/base:config",
-    ],
-)
-
-cc_library(
-    name = "canonical_hash",
-    hdrs = ["internal/canonical_hash.h"],
-    copts = ABSL_DEFAULT_COPTS,
-    linkopts = ABSL_DEFAULT_LINKOPTS,
-    visibility = [
-        "//absl/container:__pkg__",
-    ],
-    deps = [
-        ":hash",
-        "//absl/base",
-        "//absl/base:config",
-        "//absl/meta:type_traits",
-    ],
-)
-
-cc_test(
-    name = "canonical_hash_test",
-    srcs = ["internal/canonical_hash_test.cc"],
-    copts = ABSL_TEST_COPTS,
-    linkopts = ABSL_DEFAULT_LINKOPTS,
-    deps = [
-        ":canonical_hash",
-        ":hash",
-        "//absl/base:config",
-        "//absl/strings:string_view",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
+        "//absl/base:endian",
+        "//absl/base:prefetch",
+        "//absl/numeric:int128",
     ],
 )
 
@@ -249,10 +209,9 @@ cc_test(
     linkopts = ABSL_DEFAULT_LINKOPTS,
     visibility = ["//visibility:private"],
     deps = [
-        ":hash",
+        ":low_level_hash",
         "//absl/strings",
-        "//absl/strings:string_view",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )

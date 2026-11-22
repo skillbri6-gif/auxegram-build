@@ -15,13 +15,10 @@
 #ifndef ABSL_RANDOM_BERNOULLI_DISTRIBUTION_H_
 #define ABSL_RANDOM_BERNOULLI_DISTRIBUTION_H_
 
-#include <cassert>
 #include <cstdint>
-#include <ios>
 #include <istream>
-#include <ostream>
+#include <limits>
 
-#include "absl/base/config.h"
 #include "absl/base/optimization.h"
 #include "absl/random/internal/fast_uniform_bits.h"
 #include "absl/random/internal/iostream_state_saver.h"
@@ -124,11 +121,7 @@ std::basic_istream<CharT, Traits>& operator>>(
   auto saver = random_internal::make_istream_state_saver(is);
   auto p = random_internal::read_floating_point<double>(is);
   if (!is.fail()) {
-    if (p >= 0.0 && p <= 1.0) {
-      x.param(bernoulli_distribution::param_type(p));
-    } else {
-      is.setstate(std::ios_base::failbit);
-    }
+    x.param(bernoulli_distribution::param_type(p));
   }
   return is;
 }

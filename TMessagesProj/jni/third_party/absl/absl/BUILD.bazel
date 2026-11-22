@@ -16,7 +16,7 @@
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
 
-package(default_visibility = ["//visibility:private"])
+package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
@@ -24,6 +24,14 @@ config_setting(
     name = "clang_compiler",
     flag_values = {
         "@bazel_tools//tools/cpp:compiler": "clang",
+    },
+    visibility = [":__subpackages__"],
+)
+
+config_setting(
+    name = "gcc_compiler",
+    flag_values = {
+        "@bazel_tools//tools/cpp:compiler": "gcc",
     },
     visibility = [":__subpackages__"],
 )
@@ -45,21 +53,102 @@ config_setting(
 )
 
 config_setting(
-    name = "mingw-clang_compiler",
-    constraint_values = [
-        "@platforms//os:windows",
-    ],
+    name = "msvc_compiler",
     flag_values = {
-        "@bazel_tools//tools/cpp:compiler": "clang",
+        "@bazel_tools//tools/cpp:compiler": "msvc-cl",
     },
     visibility = [":__subpackages__"],
 )
 
 config_setting(
-    name = "fuchsia",
+    name = "clang-cl_compiler",
+    flag_values = {
+        "@bazel_tools//tools/cpp:compiler": "clang-cl",
+    },
+    visibility = [":__subpackages__"],
+)
+
+# x64_windows-clang-cl - used for selecting clang-cl for CI builds
+platform(
+    name = "x64_windows-clang-cl",
     constraint_values = [
-        "@platforms//os:fuchsia",
+        "@platforms//cpu:x86_64",
+        "@platforms//os:windows",
+        "@bazel_tools//tools/cpp:clang-cl",
     ],
+    visibility = [":__subpackages__"],
+)
+
+config_setting(
+    name = "osx",
+    constraint_values = [
+        "@platforms//os:osx",
+    ],
+)
+
+config_setting(
+    name = "ios",
+    constraint_values = [
+        "@platforms//os:ios",
+    ],
+)
+
+config_setting(
+    name = "ppc",
+    values = {
+        "cpu": "ppc",
+    },
+    visibility = [":__subpackages__"],
+)
+
+config_setting(
+    name = "cpu_wasm",
+    values = {
+        "cpu": "wasm",
+    },
+    visibility = [":__subpackages__"],
+)
+
+config_setting(
+    name = "cpu_wasm32",
+    values = {
+        "cpu": "wasm32",
+    },
+    visibility = [":__subpackages__"],
+)
+
+config_setting(
+    name = "platforms_wasm32",
+    constraint_values = [
+        "@platforms//cpu:wasm32",
+    ],
+    visibility = [":__subpackages__"],
+)
+
+config_setting(
+    name = "platforms_wasm64",
+    constraint_values = [
+        "@platforms//cpu:wasm64",
+    ],
+    visibility = [":__subpackages__"],
+)
+
+selects.config_setting_group(
+    name = "wasm",
+    match_any = [
+        ":cpu_wasm",
+        ":cpu_wasm32",
+        ":platforms_wasm32",
+        ":platforms_wasm64",
+    ],
+    visibility = [":__subpackages__"],
+)
+
+config_setting(
+    name = "fuchsia",
+    values = {
+        "cpu": "fuchsia",
+    },
     visibility = [":__subpackages__"],
 )
 
@@ -68,7 +157,6 @@ selects.config_setting_group(
     match_any = [
         ":mingw_unspecified_compiler",
         ":mingw-gcc_compiler",
-        ":mingw-clang_compiler",
     ],
     visibility = [":__subpackages__"],
 )

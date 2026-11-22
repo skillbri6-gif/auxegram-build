@@ -15,7 +15,6 @@
 #include "absl/crc/internal/non_temporal_memcpy.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <vector>
@@ -58,7 +57,6 @@ TEST_P(NonTemporalMemcpyTest, SSEEquality) {
   }
 }
 
-#ifdef __AVX__
 TEST_P(NonTemporalMemcpyTest, AVXEquality) {
   uint8_t* src = a_.data() + GetParam().src_offset;
   uint8_t* dst = b_.data() + GetParam().dst_offset;
@@ -69,7 +67,6 @@ TEST_P(NonTemporalMemcpyTest, AVXEquality) {
     EXPECT_EQ(src[i], dst[i]);
   }
 }
-#endif
 
 // 63B is smaller than one cacheline operation thus the non-temporal routine
 // will not be called.

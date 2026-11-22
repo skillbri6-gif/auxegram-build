@@ -18,44 +18,35 @@ SETLOCAL ENABLEDELAYEDEXPANSION
 CD %~dp0\..
 if %errorlevel% neq 0 EXIT /B 1
 
-:: Use Bazel Vendor mode to reduce reliance on external dependencies.
-IF EXIST "%KOKORO_GFILE_DIR%\distdir\abseil-cpp_vendor.tar.gz" (
-  tar --force-local -xf "%KOKORO_GFILE_DIR%\distdir\abseil-cpp_vendor.tar.gz" -C c:\
-  SET VENDOR_FLAG=--vendor_dir=c:\abseil-cpp_vendor
-) ELSE (
-  SET VENDOR_FLAG=
-)
-
-:: Set the standard version, [c++17|c++latest]
+:: Set the standard version, [c++14|c++latest]
 :: https://msdn.microsoft.com/en-us/library/mt490614.aspx
-:: The default is c++17 if not set on command line.
-IF NOT DEFINED STD SET STD=c++17
+:: The default is c++14 if not set on command line.
+IF "%STD%"=="" SET STD=c++14
 
 :: Set the compilation_mode (fastbuild|opt|dbg)
 :: https://docs.bazel.build/versions/master/user-manual.html#flag--compilation_mode
 :: The default is fastbuild
-IF NOT DEFINED COMPILATION_MODE SET COMPILATION_MODE=fastbuild
+IF "%COMPILATION_MODE%"=="" SET COMPILATION_MODE=fastbuild
 
 :: Copy the alternate option file, if specified.
-IF DEFINED ALTERNATE_OPTIONS copy %ALTERNATE_OPTIONS% absl\base\options.h
+IF NOT "%ALTERNATE_OPTIONS%"=="" copy %ALTERNATE_OPTIONS% absl\base\options.h
 
 :: To upgrade Bazel, first download a new binary from
 :: https://github.com/bazelbuild/bazel/releases and copy it to
 :: /google/data/rw/teams/absl/kokoro/windows.
-"%KOKORO_GFILE_DIR%\bazel-9.1.0-windows-x86_64.exe" ^
+%KOKORO_GFILE_DIR%\bazel-7.0.0-windows-x86_64.exe ^
   test ... ^
-  --compilation_mode="%COMPILATION_MODE%" ^
+  --compilation_mode=%COMPILATION_MODE% ^
   --copt=/WX ^
-  --cxxopt="/std:%STD%" ^
+  --copt=/std:%STD% ^
   --define=absl=1 ^
+  --distdir=%KOKORO_GFILE_DIR%\distdir ^
   --enable_bzlmod=true ^
   --keep_going ^
-  --per_file_copt=external/.*@/w ^
   --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1" ^
   --test_env=TZDIR="%CD%\absl\time\internal\cctz\testdata\zoneinfo" ^
   --test_output=errors ^
-  --test_tag_filters=-benchmark ^
-  %VENDOR_FLAG%
+  --test_tag_filters=-benchmark
 
 if %errorlevel% neq 0 EXIT /B 1
 EXIT /B 0

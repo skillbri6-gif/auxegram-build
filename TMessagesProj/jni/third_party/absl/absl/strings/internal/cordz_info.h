@@ -16,15 +16,12 @@
 #define ABSL_STRINGS_INTERNAL_CORDZ_INFO_H_
 
 #include <atomic>
-#include <cstddef>
 #include <cstdint>
 #include <functional>
 
-#include "absl/base/attributes.h"
 #include "absl/base/config.h"
-#include "absl/base/const_init.h"
 #include "absl/base/internal/raw_logging.h"
-#include "absl/base/optimization.h"
+#include "absl/base/internal/spinlock.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/strings/internal/cord_internal.h"
 #include "absl/strings/internal/cordz_functions.h"
@@ -32,7 +29,6 @@
 #include "absl/strings/internal/cordz_statistics.h"
 #include "absl/strings/internal/cordz_update_tracker.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/time/time.h"
 #include "absl/types/span.h"
 
 namespace absl {
@@ -64,8 +60,7 @@ class ABSL_LOCKABLE CordzInfo : public CordzHandle {
   // and/or deleted. `method` identifies the Cord public API method initiating
   // the cord to be sampled.
   // Requires `cord` to hold a tree, and `cord.cordz_info()` to be null.
-  static void TrackCord(InlineData& cord, MethodIdentifier method,
-                        int64_t sampling_stride);
+  static void TrackCord(InlineData& cord, MethodIdentifier method);
 
   // Identical to TrackCord(), except that this function fills the
   // `parent_stack` and `parent_method` properties of the returned CordzInfo
@@ -125,10 +120,12 @@ class ABSL_LOCKABLE CordzInfo : public CordzHandle {
   CordzInfo& operator=(const CordzInfo&) = delete;
 
   // Retrieves the oldest existing CordzInfo.
-  static CordzInfo* Head(const CordzSnapshot& snapshot);
+  static CordzInfo* Head(const CordzSnapshot& snapshot)
+      ABSL_NO_THREAD_SAFETY_ANALYSIS;
 
   // Retrieves the next oldest existing CordzInfo older than 'this' instance.
-  CordzInfo* Next(const CordzSnapshot& snapshot) const;
+  CordzInfo* Next(const CordzSnapshot& snapshot) const
+      ABSL_NO_THREAD_SAFETY_ANALYSIS;
 
   // Locks this instance for the update identified by `method`.
   // Increases the count for `method` in `update_tracker`.
@@ -184,22 +181,25 @@ class ABSL_LOCKABLE CordzInfo : public CordzHandle {
   // or RemovePrefix.
   CordzStatistics GetCordzStatistics() const;
 
-  int64_t sampling_stride() const { return sampling_stride_; }
-
  private:
+  using SpinLock = absl::base_internal::SpinLock;
+  using SpinLockHolder = ::absl::base_internal::SpinLockHolder;
+
   // Global cordz info list. CordzInfo stores a pointer to the global list
   // instance to harden against ODR violations.
   struct List {
-    absl::Mutex mutex;
-    CordzInfo* head ABSL_GUARDED_BY(mutex){nullptr};
-  };
+    constexpr explicit List(absl::ConstInitType)
+        : mutex(absl::kConstInit,
+                absl::base_internal::SCHEDULE_COOPERATIVE_AND_KERNEL) {}
 
-  static List* GlobalList();
+    SpinLock mutex;
+    std::atomic<CordzInfo*> head ABSL_GUARDED_BY(mutex){nullptr};
+  };
 
   static constexpr size_t kMaxStackDepth = 64;
 
   explicit CordzInfo(CordRep* rep, const CordzInfo* src,
-                     MethodIdentifier method, int64_t weight);
+                     MethodIdentifier method);
   ~CordzInfo() override;
 
   // Sets `rep_` without holding a lock.
@@ -220,7 +220,7 @@ class ABSL_LOCKABLE CordzInfo : public CordzHandle {
 
   void ODRCheck() const {
 #ifndef NDEBUG
-    ABSL_RAW_CHECK(list_ == GlobalList(), "ODR violation in Cord");
+    ABSL_RAW_CHECK(list_ == &global_list_, "ODR violation in Cord");
 #endif
   }
 
@@ -230,11 +230,12 @@ class ABSL_LOCKABLE CordzInfo : public CordzHandle {
   static void MaybeTrackCordImpl(InlineData& cord, const InlineData& src,
                                  MethodIdentifier method);
 
-  List* const list_ = GlobalList();
+  ABSL_CONST_INIT static List global_list_;
+  List* const list_ = &global_list_;
 
   // ci_prev_ and ci_next_ require the global list mutex to be held.
   // Unfortunately we can't use thread annotations such that the thread safety
-  // analysis understands that list_ and GlobalList() are one and the same.
+  // analysis understands that list_ and global_list_ are one and the same.
   std::atomic<CordzInfo*> ci_prev_{nullptr};
   std::atomic<CordzInfo*> ci_next_{nullptr};
 
@@ -249,25 +250,23 @@ class ABSL_LOCKABLE CordzInfo : public CordzHandle {
   const MethodIdentifier parent_method_;
   CordzUpdateTracker update_tracker_;
   const absl::Time create_time_;
-  const int64_t sampling_stride_;
 };
 
-ABSL_ATTRIBUTE_ALWAYS_INLINE inline void CordzInfo::MaybeTrackCord(
+inline ABSL_ATTRIBUTE_ALWAYS_INLINE void CordzInfo::MaybeTrackCord(
     InlineData& cord, MethodIdentifier method) {
-  auto stride = cordz_should_profile();
-  if (ABSL_PREDICT_FALSE(stride > 0)) {
-    TrackCord(cord, method, stride);
+  if (ABSL_PREDICT_FALSE(cordz_should_profile())) {
+    TrackCord(cord, method);
   }
 }
 
-ABSL_ATTRIBUTE_ALWAYS_INLINE inline void CordzInfo::MaybeTrackCord(
+inline ABSL_ATTRIBUTE_ALWAYS_INLINE void CordzInfo::MaybeTrackCord(
     InlineData& cord, const InlineData& src, MethodIdentifier method) {
   if (ABSL_PREDICT_FALSE(InlineData::is_either_profiled(cord, src))) {
     MaybeTrackCordImpl(cord, src, method);
   }
 }
 
-ABSL_ATTRIBUTE_ALWAYS_INLINE inline void CordzInfo::MaybeUntrackCord(
+inline ABSL_ATTRIBUTE_ALWAYS_INLINE void CordzInfo::MaybeUntrackCord(
     CordzInfo* info) {
   if (ABSL_PREDICT_FALSE(info)) {
     info->Untrack();
@@ -288,7 +287,7 @@ inline void CordzInfo::SetCordRep(CordRep* rep) {
 inline void CordzInfo::UnsafeSetCordRep(CordRep* rep) { rep_ = rep; }
 
 inline CordRep* CordzInfo::RefCordRep() const ABSL_LOCKS_EXCLUDED(mutex_) {
-  MutexLock lock(mutex_);
+  MutexLock lock(&mutex_);
   return rep_ ? CordRep::Ref(rep_) : nullptr;
 }
 

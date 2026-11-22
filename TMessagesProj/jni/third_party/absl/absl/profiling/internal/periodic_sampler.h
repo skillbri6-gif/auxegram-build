@@ -19,7 +19,6 @@
 
 #include <atomic>
 
-#include "absl/base/config.h"
 #include "absl/base/optimization.h"
 #include "absl/profiling/internal/exponential_biased.h"
 
@@ -173,7 +172,7 @@ inline bool PeriodicSamplerBase::Sample() noexcept {
 // Typical use case:
 //
 //   struct HashTablezTag {};
-//   thread_local PeriodicSampler<HashTablezTag, 100> sampler;
+//   thread_local PeriodicSampler sampler;
 //
 //   void HashTableSamplingLogic(...) {
 //     if (sampler.Sample()) {

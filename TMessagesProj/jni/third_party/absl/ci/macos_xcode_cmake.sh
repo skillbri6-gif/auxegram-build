@@ -16,14 +16,6 @@
 
 set -euox pipefail
 
-# Use Xcode 26.2
-sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer
-
-brew install cmake
-
-export CMAKE_BUILD_PARALLEL_LEVEL=$(sysctl -n hw.ncpu)
-export CTEST_PARALLEL_LEVEL=$(sysctl -n hw.ncpu)
-
 if [[ -z ${ABSEIL_ROOT:-} ]]; then
   ABSEIL_ROOT="$(dirname ${0})/.."
 fi
@@ -31,9 +23,9 @@ ABSEIL_ROOT=$(realpath ${ABSEIL_ROOT})
 
 source "${ABSEIL_ROOT}/ci/cmake_common.sh"
 
-# Avoid depending on GitHub by looking for a cached copy of GoogleTest.
-if [[ -r "${KOKORO_GFILE_DIR:-}/distdir/googletest-${ABSL_GOOGLETEST_VERSION}.tar.gz" ]]; then
-  ABSL_GOOGLETEST_DOWNLOAD_URL="${KOKORO_GFILE_DIR}/distdir/googletest-${ABSL_GOOGLETEST_VERSION}.tar.gz"
+# The MacOS build doesn't run in a docker container, so we have to override ABSL_GOOGLETEST_DOWNLOAD_URL.
+if [[ -r "${KOKORO_GFILE_DIR}/distdir/${ABSL_GOOGLETEST_COMMIT}.zip" ]]; then
+  ABSL_GOOGLETEST_DOWNLOAD_URL="file://${KOKORO_GFILE_DIR}/distdir/${ABSL_GOOGLETEST_COMMIT}.zip"
 fi
 
 if [[ -z ${ABSL_CMAKE_BUILD_TYPES:-} ]]; then
@@ -44,35 +36,22 @@ if [[ -z ${ABSL_CMAKE_BUILD_SHARED:-} ]]; then
   ABSL_CMAKE_BUILD_SHARED="OFF ON"
 fi
 
-if [[ -z ${ABSL_CMAKE_BUILD_MONOLITHIC_SHARED_LIBS:-} ]]; then
-  ABSL_CMAKE_BUILD_MONOLITHIC_SHARED_LIBS="OFF ON"
-fi
-
 for compilation_mode in ${ABSL_CMAKE_BUILD_TYPES}; do
   for build_shared in ${ABSL_CMAKE_BUILD_SHARED}; do
-    if [[ $build_shared == "OFF" ]]; then
-      monolithic_shared_options="OFF"
-    else
-      monolithic_shared_options="$ABSL_CMAKE_BUILD_MONOLITHIC_SHARED_LIBS"
-    fi
+    BUILD_DIR=$(mktemp -d ${compilation_mode}.XXXXXXXX)
+    cd ${BUILD_DIR}
 
-    for monolithic_shared in $monolithic_shared_options; do
-      BUILD_DIR=$(mktemp -d ${compilation_mode}.XXXXXXXX)
-      cd ${BUILD_DIR}
-
-      # TODO(absl-team): Enable -Werror once all warnings are fixed.
-      time cmake ${ABSEIL_ROOT} \
-        -GXcode \
-        -DBUILD_SHARED_LIBS="${build_shared}" \
-        -DABSL_BUILD_TESTING=ON \
-        -DCMAKE_BUILD_TYPE="${compilation_mode}" \
-        -DCMAKE_CXX_STANDARD=17 \
-        -DCMAKE_MODULE_LINKER_FLAGS="-Wl,--no-undefined" \
-        -DABSL_BUILD_MONOLITHIC_SHARED_LIBS="${monolithic_shared}" \
-        -DABSL_GOOGLETEST_DOWNLOAD_URL="${ABSL_GOOGLETEST_DOWNLOAD_URL}"
-      time cmake --build .
-      time TZDIR=${ABSEIL_ROOT}/absl/time/internal/cctz/testdata/zoneinfo \
-        ctest -C ${compilation_mode} --output-on-failure
-    done
+    # TODO(absl-team): Enable -Werror once all warnings are fixed.
+    time cmake ${ABSEIL_ROOT} \
+      -GXcode \
+      -DBUILD_SHARED_LIBS=${build_shared} \
+      -DABSL_BUILD_TESTING=ON \
+      -DCMAKE_BUILD_TYPE=${compilation_mode} \
+      -DCMAKE_CXX_STANDARD=14 \
+      -DCMAKE_MODULE_LINKER_FLAGS="-Wl,--no-undefined" \
+      -DABSL_GOOGLETEST_DOWNLOAD_URL="${ABSL_GOOGLETEST_DOWNLOAD_URL}"
+    time cmake --build .
+    time TZDIR=${ABSEIL_ROOT}/absl/time/internal/cctz/testdata/zoneinfo \
+      ctest -C ${compilation_mode} --output-on-failure
   done
 done

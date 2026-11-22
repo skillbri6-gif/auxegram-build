@@ -15,6 +15,21 @@
 # Internal-only target, do not depend on directly.
 absl_cc_library(
   NAME
+    crc_cpu_detect
+  HDRS
+    "internal/cpu_detect.h"
+  SRCS
+    "internal/cpu_detect.cc"
+  COPTS
+    ${ABSL_DEFAULT_COPTS}
+  DEPS
+    absl::base
+    absl::config
+)
+
+# Internal-only target, do not depend on directly.
+absl_cc_library(
+  NAME
     crc_internal
   HDRS
     "internal/crc.h"
@@ -26,14 +41,14 @@ absl_cc_library(
   COPTS
     ${ABSL_DEFAULT_COPTS}
   DEPS
-    absl::base_cpu_detect
-    absl::bits
+    absl::crc_cpu_detect
     absl::config
     absl::core_headers
     absl::endian
-    absl::memory
     absl::prefetch
     absl::raw_logging_internal
+    absl::memory
+    absl::bits
 )
 
 absl_cc_library(
@@ -52,15 +67,15 @@ absl_cc_library(
   COPTS
     ${ABSL_DEFAULT_COPTS}
   DEPS
-    absl::base_cpu_detect
+    absl::crc_cpu_detect
+    absl::crc_internal
+    absl::non_temporal_memcpy
     absl::config
     absl::core_headers
-    absl::crc_internal
     absl::endian
-    absl::non_temporal_memcpy
     absl::prefetch
     absl::str_format
-    absl::string_view
+    absl::strings
 )
 
 absl_cc_test(
@@ -72,9 +87,8 @@ absl_cc_test(
     ${ABSL_DEFAULT_COPTS}
   DEPS
     absl::crc32c
-    absl::str_format
-    absl::string_view
     absl::strings
+    absl::str_format
     GTest::gtest_main
 )
 
@@ -99,9 +113,9 @@ absl_cc_library(
   COPTS
     ${ABSL_DEFAULT_COPTS}
   DEPS
+    absl::non_temporal_arm_intrinsics
     absl::config
     absl::core_headers
-    absl::non_temporal_arm_intrinsics
 )
 
 absl_cc_test(
@@ -112,18 +126,12 @@ absl_cc_test(
   COPTS
     ${ABSL_DEFAULT_COPTS}
   DEPS
-    absl::config
-    absl::core_headers
     absl::crc32c
-    absl::crc_internal
     absl::memory
-    absl::random_distributions
     absl::random_random
-    absl::string_view
+    absl::random_distributions
     absl::strings
     GTest::gtest_main
-  SHARD_COUNT
-    3
 )
 
 absl_cc_test(
@@ -148,9 +156,8 @@ absl_cc_library(
   COPTS
     ${ABSL_DEFAULT_COPTS}
   DEPS
-    absl::config
     absl::crc32c
-    absl::no_destructor
+    absl::config
     absl::strings
 )
 
@@ -162,7 +169,7 @@ absl_cc_test(
   COPTS
     ${ABSL_DEFAULT_COPTS}
   DEPS
-    absl::crc32c
     absl::crc_cord_state
+    absl::crc32c
     GTest::gtest_main
 )

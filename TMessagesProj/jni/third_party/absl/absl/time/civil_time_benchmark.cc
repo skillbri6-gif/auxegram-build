@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "absl/time/civil_time.h"
+
 #include <cstddef>
 #include <numeric>
 #include <string>
 #include <vector>
 
 #include "absl/hash/hash.h"
-#include "absl/time/civil_time.h"
 #include "benchmark/benchmark.h"
 
 namespace {

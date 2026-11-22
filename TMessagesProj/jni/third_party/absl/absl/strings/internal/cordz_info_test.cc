@@ -14,9 +14,6 @@
 
 #include "absl/strings/internal/cordz_info.h"
 
-#include <cstddef>
-#include <memory>
-#include <string>
 #include <vector>
 
 #include "gmock/gmock.h"
@@ -25,7 +22,6 @@
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
 #include "absl/strings/cordz_test_helpers.h"
-#include "absl/strings/internal/cord_internal.h"
 #include "absl/strings/internal/cord_rep_flat.h"
 #include "absl/strings/internal/cordz_handle.h"
 #include "absl/strings/internal/cordz_statistics.h"
@@ -69,7 +65,7 @@ std::string FormatStack(absl::Span<void* const> raw_stack) {
 
 TEST(CordzInfoTest, TrackCord) {
   TestCordData data;
-  CordzInfo::TrackCord(data.data, kTrackCordMethod, 1);
+  CordzInfo::TrackCord(data.data, kTrackCordMethod);
   CordzInfo* info = data.data.cordz_info();
   ASSERT_THAT(info, Ne(nullptr));
   EXPECT_FALSE(info->is_snapshot());
@@ -95,7 +91,7 @@ TEST(CordzInfoTest, MaybeTrackChildCordWithSampling) {
 TEST(CordzInfoTest, MaybeTrackChildCordWithoutSamplingParentSampled) {
   CordzSamplingIntervalHelper sample_none(99999);
   TestCordData parent, child;
-  CordzInfo::TrackCord(parent.data, kTrackCordMethod, 1);
+  CordzInfo::TrackCord(parent.data, kTrackCordMethod);
   CordzInfo::MaybeTrackCord(child.data, parent.data, kTrackCordMethod);
   CordzInfo* parent_info = parent.data.cordz_info();
   CordzInfo* child_info = child.data.cordz_info();
@@ -109,7 +105,7 @@ TEST(CordzInfoTest, MaybeTrackChildCordWithoutSamplingParentSampled) {
 TEST(CordzInfoTest, MaybeTrackChildCordWithoutSamplingChildSampled) {
   CordzSamplingIntervalHelper sample_none(99999);
   TestCordData parent, child;
-  CordzInfo::TrackCord(child.data, kTrackCordMethod, 1);
+  CordzInfo::TrackCord(child.data, kTrackCordMethod);
   CordzInfo::MaybeTrackCord(child.data, parent.data, kTrackCordMethod);
   EXPECT_THAT(child.data.cordz_info(), Eq(nullptr));
 }
@@ -117,14 +113,14 @@ TEST(CordzInfoTest, MaybeTrackChildCordWithoutSamplingChildSampled) {
 TEST(CordzInfoTest, MaybeTrackChildCordWithSamplingChildSampled) {
   CordzSamplingIntervalHelper sample_all(1);
   TestCordData parent, child;
-  CordzInfo::TrackCord(child.data, kTrackCordMethod, 1);
+  CordzInfo::TrackCord(child.data, kTrackCordMethod);
   CordzInfo::MaybeTrackCord(child.data, parent.data, kTrackCordMethod);
   EXPECT_THAT(child.data.cordz_info(), Eq(nullptr));
 }
 
 TEST(CordzInfoTest, UntrackCord) {
   TestCordData data;
-  CordzInfo::TrackCord(data.data, kTrackCordMethod, 1);
+  CordzInfo::TrackCord(data.data, kTrackCordMethod);
   CordzInfo* info = data.data.cordz_info();
 
   info->Untrack();
@@ -133,7 +129,7 @@ TEST(CordzInfoTest, UntrackCord) {
 
 TEST(CordzInfoTest, UntrackCordWithSnapshot) {
   TestCordData data;
-  CordzInfo::TrackCord(data.data, kTrackCordMethod, 1);
+  CordzInfo::TrackCord(data.data, kTrackCordMethod);
   CordzInfo* info = data.data.cordz_info();
 
   CordzSnapshot snapshot;
@@ -145,7 +141,7 @@ TEST(CordzInfoTest, UntrackCordWithSnapshot) {
 
 TEST(CordzInfoTest, SetCordRep) {
   TestCordData data;
-  CordzInfo::TrackCord(data.data, kTrackCordMethod, 1);
+  CordzInfo::TrackCord(data.data, kTrackCordMethod);
   CordzInfo* info = data.data.cordz_info();
 
   TestCordRep rep;
@@ -159,7 +155,7 @@ TEST(CordzInfoTest, SetCordRep) {
 
 TEST(CordzInfoTest, SetCordRepNullUntracksCordOnUnlock) {
   TestCordData data;
-  CordzInfo::TrackCord(data.data, kTrackCordMethod, 1);
+  CordzInfo::TrackCord(data.data, kTrackCordMethod);
   CordzInfo* info = data.data.cordz_info();
 
   info->Lock(CordzUpdateTracker::kAppendString);
@@ -173,7 +169,7 @@ TEST(CordzInfoTest, SetCordRepNullUntracksCordOnUnlock) {
 
 TEST(CordzInfoTest, RefCordRep) {
   TestCordData data;
-  CordzInfo::TrackCord(data.data, kTrackCordMethod, 1);
+  CordzInfo::TrackCord(data.data, kTrackCordMethod);
   CordzInfo* info = data.data.cordz_info();
 
   size_t refcount = data.rep.rep->refcount.Get();
@@ -187,7 +183,7 @@ TEST(CordzInfoTest, RefCordRep) {
 
 TEST(CordzInfoTest, SetCordRepRequiresMutex) {
   TestCordData data;
-  CordzInfo::TrackCord(data.data, kTrackCordMethod, 1);
+  CordzInfo::TrackCord(data.data, kTrackCordMethod);
   CordzInfo* info = data.data.cordz_info();
   TestCordRep rep;
   EXPECT_DEBUG_DEATH(info->SetCordRep(rep.rep), ".*");
@@ -201,13 +197,13 @@ TEST(CordzInfoTest, TrackUntrackHeadFirstV2) {
   EXPECT_THAT(CordzInfo::Head(snapshot), Eq(nullptr));
 
   TestCordData data;
-  CordzInfo::TrackCord(data.data, kTrackCordMethod, 1);
+  CordzInfo::TrackCord(data.data, kTrackCordMethod);
   CordzInfo* info1 = data.data.cordz_info();
   ASSERT_THAT(CordzInfo::Head(snapshot), Eq(info1));
   EXPECT_THAT(info1->Next(snapshot), Eq(nullptr));
 
   TestCordData data2;
-  CordzInfo::TrackCord(data2.data, kTrackCordMethod, 1);
+  CordzInfo::TrackCord(data2.data, kTrackCordMethod);
   CordzInfo* info2 = data2.data.cordz_info();
   ASSERT_THAT(CordzInfo::Head(snapshot), Eq(info2));
   EXPECT_THAT(info2->Next(snapshot), Eq(info1));
@@ -226,13 +222,13 @@ TEST(CordzInfoTest, TrackUntrackTailFirstV2) {
   EXPECT_THAT(CordzInfo::Head(snapshot), Eq(nullptr));
 
   TestCordData data;
-  CordzInfo::TrackCord(data.data, kTrackCordMethod, 1);
+  CordzInfo::TrackCord(data.data, kTrackCordMethod);
   CordzInfo* info1 = data.data.cordz_info();
   ASSERT_THAT(CordzInfo::Head(snapshot), Eq(info1));
   EXPECT_THAT(info1->Next(snapshot), Eq(nullptr));
 
   TestCordData data2;
-  CordzInfo::TrackCord(data2.data, kTrackCordMethod, 1);
+  CordzInfo::TrackCord(data2.data, kTrackCordMethod);
   CordzInfo* info2 = data2.data.cordz_info();
   ASSERT_THAT(CordzInfo::Head(snapshot), Eq(info2));
   EXPECT_THAT(info2->Next(snapshot), Eq(info1));
@@ -258,7 +254,7 @@ TEST(CordzInfoTest, StackV2) {
   // makes small modifications to its testing stack. 50 is sufficient to prove
   // that we got a decent stack.
   static constexpr int kMaxStackDepth = 50;
-  CordzInfo::TrackCord(data.data, kTrackCordMethod, 1);
+  CordzInfo::TrackCord(data.data, kTrackCordMethod);
   CordzInfo* info = data.data.cordz_info();
   std::vector<void*> local_stack;
   local_stack.resize(kMaxStackDepth);
@@ -288,7 +284,7 @@ CordzInfo* TrackChildCord(InlineData& data, const InlineData& parent) {
   return data.cordz_info();
 }
 CordzInfo* TrackParentCord(InlineData& data) {
-  CordzInfo::TrackCord(data, kTrackCordMethod, 1);
+  CordzInfo::TrackCord(data, kTrackCordMethod);
   return data.cordz_info();
 }
 

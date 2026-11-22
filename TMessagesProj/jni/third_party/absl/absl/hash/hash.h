@@ -22,8 +22,6 @@
 //   * The `absl::Hash` functor, which is used to invoke the hasher within the
 //     Abseil hashing framework. `absl::Hash<T>` supports most basic types and
 //     a number of Abseil types out of the box.
-//   * The `absl::TransparentHash` functor, which provides transparent hashing
-//     for heterogeneous lookup across multiple types in associative containers.
 //   * `AbslHashValue`, an extension point that allows you to extend types to
 //     support Abseil hashing without requiring you to define a hashing
 //     algorithm.
@@ -80,17 +78,11 @@
 #ifndef ABSL_HASH_HASH_H_
 #define ABSL_HASH_HASH_H_
 
-#include <cstddef>
-#include <cstdint>
 #include <tuple>
-#include <type_traits>
 #include <utility>
 
-#include "absl/base/config.h"
 #include "absl/functional/function_ref.h"
 #include "absl/hash/internal/hash.h"
-#include "absl/hash/internal/weakly_mixed_integer.h"
-#include "absl/meta/type_traits.h"
 
 namespace absl {
 ABSL_NAMESPACE_BEGIN
@@ -119,11 +111,11 @@ ABSL_NAMESPACE_BEGIN
 //   * All string-like types including:
 //     * absl::Cord
 //     * std::string (as well as any instance of std::basic_string that
-//       uses one of {char, wchar_t, char8_t, char16_t, char32_t} and its
-//       associated std::char_traits)
+//       uses one of {char, wchar_t, char16_t, char32_t} and its associated
+//       std::char_traits)
 //     * std::string_view (as well as any instance of std::basic_string_view
-//       that uses one of {char, wchar_t, char8_t, char16_t, char32_t} and its
-//       associated std::char_traits)
+//       that uses one of {char, wchar_t, char16_t, char32_t} and its associated
+//       std::char_traits)
 //  * All the standard sequence containers (provided the elements are hashable)
 //  * All the standard associative containers (provided the elements are
 //    hashable)
@@ -254,100 +246,8 @@ ABSL_NAMESPACE_BEGIN
 // Note: unlike `std::hash', `absl::Hash` should never be specialized. It must
 // only be extended by adding `AbslHashValue()` overloads.
 //
-// `AbslHashValue()` may only be defined for user-defined types (such as
-// classes, structs, unions, or enums) that you own. It is not allowed to define
-// `AbslHashValue()` overloads for built-in types such as pointers (e.g.
-// `const MyType*`), standard library types (e.g. `std::unique_ptr<MyType>`), or
-// types that `absl::Hash` natively supports. In `absl::Hash`, pointers are
-// always hashed by their memory address; to hash pointers by their pointee
-// value in a container, pass custom hash and equality functors to the container
-// instead.
-//
 template <typename T>
 using Hash = absl::hash_internal::Hash<T>;
-
-// TransparentHash
-//
-// `absl::TransparentHash<Ts...>` is a transparent hash functor that provides
-// heterogeneous hashing across multiple types `Ts...` for associative
-// containers such as `absl::flat_hash_set` and `absl::flat_hash_map`.
-//
-// It exposes `operator()(const T&)` overloads for each type `T` in `Ts...`,
-// delegating each call to `absl::Hash<T>{}(value)`. It also defines the nested
-// type alias `using is_transparent = void;`, signaling to containers that
-// heterogeneous lookup is supported.
-//
-// If any type in `Ts...` is not hashable within the `absl::Hash` framework,
-// `absl::TransparentHash` is poisoned (its call operators are disabled) in the
-// same manner as `absl::Hash`.
-//
-// Duplicates types are allowed in `Ts...`.
-//
-// Requirements:
-//
-// For heterogeneous lookup to be correct, equivalent values across different
-// types must produce identical hash values. That is, if `a == b`, then
-// `TransparentHash{}(a) == TransparentHash{}(b)` must hold. This is typically
-// satisfied when the `AbslHashValue()` implementations for each type combine
-// identical fields in the same order.
-//
-// Usage:
-//
-// `absl::TransparentHash` can be used in two ways:
-//
-// 1. As an explicit `Hash` template argument to a container:
-//
-//      absl::flat_hash_set<Name, absl::TransparentHash<Name, NameView>,
-//                          NameEq> set;
-//
-// 2. As the nested `absl_container_hash` type alias within a user-defined key
-//    type:
-//
-//      struct Name {
-//        ...
-//        using absl_container_hash = absl::TransparentHash<Name, NameView>;
-//      };
-//
-//    When `absl_container_hash` is defined in the key type, Abseil hash
-//    containers will automatically use it and enable heterogeneous lookup by
-//    default (using `std::equal_to<void>` for equality if `absl_container_eq`
-//    is not provided).
-//
-// Example:
-//
-//   struct NameView {
-//     absl::string_view first;
-//     absl::string_view last;
-//
-//     template <typename H>
-//     friend H AbslHashValue(H h, const NameView& nv) {
-//       return H::combine(std::move(h), nv.first, nv.last);
-//     }
-//     friend bool operator==(const NameView& a, const NameView& b);
-//   };
-//
-//   struct Name {
-//     std::string first;
-//     std::string last;
-//
-//     template <typename H>
-//     friend H AbslHashValue(H h, const Name& n) {
-//       return H::combine(std::move(h), n.first, n.last);
-//     }
-//     friend bool operator==(const Name& a, const Name& b);
-//     operator NameView() const;
-//
-//     using absl_container_hash = absl::TransparentHash<Name, NameView>;
-//   };
-//
-//   absl::flat_hash_set<Name> names;
-//   names.insert(Name{"John", "Doe"});
-//
-//   // Look up using `NameView` without constructing a temporary `Name` or
-//   // allocating memory:
-//   assert(names.contains(NameView{"John", "Doe"}));
-template <typename... Ts>
-using TransparentHash = absl::hash_internal::TransparentHash<Ts...>;
 
 // HashOf
 //
@@ -419,27 +319,11 @@ class HashState : public hash_internal::HashStateBase<HashState> {
   // Create a new `HashState` instance that wraps `state`. All calls to
   // `combine()` and `combine_contiguous()` on the new instance will be
   // redirected to the original `state` object. The `state` object must outlive
-  // the `HashState` instance. `T` must be a subclass of `HashStateBase<T>` -
-  // users should not define their own HashState types.
-  template <typename T,
-            std::enable_if_t<
-                std::is_base_of_v<hash_internal::HashStateBase<T>, T>, int> = 0>
+  // the `HashState` instance.
+  template <typename T>
   static HashState Create(T* state) {
     HashState s;
-    if constexpr (std::is_same_v<T, HashState>) {
-      // Do not type erase an already type-erased state.
-      s.state_ = state->state_;
-      s.combine_weakly_mixed_integer_ = state->combine_weakly_mixed_integer_;
-      s.combine_contiguous_ = state->combine_contiguous_;
-      s.combine_raw_ = state->combine_raw_;
-      s.run_combine_unordered_ = state->run_combine_unordered_;
-    } else {
-      s.state_ = state;
-      s.combine_weakly_mixed_integer_ = &CombineWeaklyMixedIntegerImpl<T>;
-      s.combine_contiguous_ = &CombineContiguousImpl<T>;
-      s.combine_raw_ = &CombineRawImpl<T>;
-      s.run_combine_unordered_ = &RunCombineUnorderedImpl<T>;
-    }
+    s.Init(state);
     return s;
   }
 
@@ -463,19 +347,12 @@ class HashState : public hash_internal::HashStateBase<HashState> {
     hash_state.combine_contiguous_(hash_state.state_, first, size);
     return hash_state;
   }
-
-  static HashState combine_weakly_mixed_integer(
-      HashState hash_state, hash_internal::WeaklyMixedInteger value) {
-    hash_state.combine_weakly_mixed_integer_(hash_state.state_, value);
-    return hash_state;
-  }
   using HashState::HashStateBase::combine_contiguous;
 
  private:
   HashState() = default;
 
   friend class HashState::HashStateBase;
-  friend struct hash_internal::CombineRaw;
 
   template <typename T>
   static void CombineContiguousImpl(void* p, const unsigned char* first,
@@ -485,36 +362,34 @@ class HashState : public hash_internal::HashStateBase<HashState> {
   }
 
   template <typename T>
-  static void CombineWeaklyMixedIntegerImpl(
-      void* p, hash_internal::WeaklyMixedInteger value) {
-    T& state = *static_cast<T*>(p);
-    state = T::combine_weakly_mixed_integer(std::move(state), value);
+  void Init(T* state) {
+    state_ = state;
+    combine_contiguous_ = &CombineContiguousImpl<T>;
+    run_combine_unordered_ = &RunCombineUnorderedImpl<T>;
   }
 
-  static HashState combine_raw(HashState hash_state, uint64_t value) {
-    hash_state.combine_raw_(hash_state.state_, value);
-    return hash_state;
-  }
+  template <typename HS>
+  struct CombineUnorderedInvoker {
+    template <typename T, typename ConsumerT>
+    void operator()(T inner_state, ConsumerT inner_cb) {
+      f(HashState::Create(&inner_state),
+        [&](HashState& inner_erased) { inner_cb(inner_erased.Real<T>()); });
+    }
 
-  template <typename T>
-  static void CombineRawImpl(void* p, uint64_t value) {
-    T& state = *static_cast<T*>(p);
-    state = hash_internal::CombineRaw()(std::move(state), value);
-  }
+    absl::FunctionRef<void(HS, absl::FunctionRef<void(HS&)>)> f;
+  };
 
   template <typename T>
   static HashState RunCombineUnorderedImpl(
       HashState state,
       absl::FunctionRef<void(HashState, absl::FunctionRef<void(HashState&)>)>
           f) {
-    T& real_state = *static_cast<T*>(state.state_);
+    // Note that this implementation assumes that inner_state and outer_state
+    // are the same type.  This isn't true in the SpyHash case, but SpyHash
+    // types are move-convertible to each other, so this still works.
+    T& real_state = state.Real<T>();
     real_state = T::RunCombineUnordered(
-        std::move(real_state), [&](auto inner_state, auto inner_cb) {
-          f(HashState::Create(&inner_state), [&](HashState& inner_erased) {
-            inner_cb(
-                *static_cast<decltype(inner_state)*>(inner_erased.state_));
-          });
-        });
+        std::move(real_state), CombineUnorderedInvoker<HashState>{f});
     return state;
   }
 
@@ -524,11 +399,20 @@ class HashState : public hash_internal::HashStateBase<HashState> {
     return run(std::move(state), std::ref(combiner));
   }
 
+  // Do not erase an already erased state.
+  void Init(HashState* state) {
+    state_ = state->state_;
+    combine_contiguous_ = state->combine_contiguous_;
+    run_combine_unordered_ = state->run_combine_unordered_;
+  }
+
+  template <typename T>
+  T& Real() {
+    return *static_cast<T*>(state_);
+  }
+
   void* state_;
-  void (*combine_weakly_mixed_integer_)(
-      void*, absl::hash_internal::WeaklyMixedInteger);
   void (*combine_contiguous_)(void*, const unsigned char*, size_t);
-  void (*combine_raw_)(void*, uint64_t);
   HashState (*run_combine_unordered_)(
       HashState state,
       absl::FunctionRef<void(HashState, absl::FunctionRef<void(HashState&)>)>);

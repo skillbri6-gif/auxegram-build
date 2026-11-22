@@ -17,18 +17,11 @@
 
 #include <assert.h>
 
-#include <algorithm>
 #include <atomic>
-#include <cstdlib>
-#include <functional>
-#include <memory>
 #include <string>
-#include <utility>
-#include <vector>
 
 #include "absl/base/config.h"
 #include "absl/base/no_destructor.h"
-#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/flags/commandlineflag.h"
@@ -60,11 +53,8 @@ class FlagRegistry {
   // Store a flag in this registry. Takes ownership of *flag.
   void RegisterFlag(CommandLineFlag& flag, const char* filename);
 
-  void lock() ABSL_EXCLUSIVE_LOCK_FUNCTION(lock_) { lock_.lock(); }
-  inline void Lock() ABSL_EXCLUSIVE_LOCK_FUNCTION(lock_) { lock(); }
-
-  void unlock() ABSL_UNLOCK_FUNCTION(lock_) { lock_.unlock(); }
-  inline void Unlock() ABSL_UNLOCK_FUNCTION(lock_) { unlock(); }
+  void Lock() ABSL_EXCLUSIVE_LOCK_FUNCTION(lock_) { lock_.Lock(); }
+  void Unlock() ABSL_UNLOCK_FUNCTION(lock_) { lock_.Unlock(); }
 
   // Returns the flag object for the specified name, or nullptr if not found.
   // Will emit a warning if a 'retired' flag is specified.
@@ -97,8 +87,8 @@ namespace {
 
 class FlagRegistryLock {
  public:
-  explicit FlagRegistryLock(FlagRegistry& fr) : fr_(fr) { fr_.lock(); }
-  ~FlagRegistryLock() { fr_.unlock(); }
+  explicit FlagRegistryLock(FlagRegistry& fr) : fr_(fr) { fr_.Lock(); }
+  ~FlagRegistryLock() { fr_.Unlock(); }
 
  private:
   FlagRegistry& fr_;
@@ -191,7 +181,6 @@ void ForEachFlag(std::function<void(CommandLineFlag&)> visitor) {
 
   if (registry.finalized_flags_.load(std::memory_order_acquire)) {
     for (const auto& i : registry.flat_flags_) visitor(*i);
-    return;
   }
 
   FlagRegistryLock frl(registry);
@@ -228,13 +217,6 @@ void FinalizeRegistry() {
 
 namespace {
 
-// These are only used as constexpr global objects.
-// They do not use a virtual destructor to simplify their implementation.
-// They are not destroyed except at program exit, so leaks do not matter.
-#if defined(__GNUC__) && !defined(__clang__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wnon-virtual-dtor"
-#endif
 class RetiredFlagObj final : public CommandLineFlag {
  public:
   constexpr RetiredFlagObj(const char* name, FlagFastTypeId type_id)
@@ -294,16 +276,14 @@ class RetiredFlagObj final : public CommandLineFlag {
   const char* const name_;
   const FlagFastTypeId type_id_;
 };
-#if defined(__GNUC__) && !defined(__clang__)
-#pragma GCC diagnostic pop
-#endif
 
 }  // namespace
 
-void Retire(const char* name, FlagFastTypeId type_id, unsigned char* buf) {
-  static_assert(sizeof(RetiredFlagObj) == kRetiredFlagObjSize);
-  static_assert(alignof(RetiredFlagObj) == kRetiredFlagObjAlignment);
-  auto* flag = ::new (buf) flags_internal::RetiredFlagObj(name, type_id);
+void Retire(const char* name, FlagFastTypeId type_id, char* buf) {
+  static_assert(sizeof(RetiredFlagObj) == kRetiredFlagObjSize, "");
+  static_assert(alignof(RetiredFlagObj) == kRetiredFlagObjAlignment, "");
+  auto* flag = ::new (static_cast<void*>(buf))
+      flags_internal::RetiredFlagObj(name, type_id);
   FlagRegistry::GlobalRegistry().RegisterFlag(*flag, nullptr);
 }
 
@@ -328,9 +308,9 @@ class FlagSaverImpl {
   }
 
   // Restores the saved flag states into the flag registry.
-  void RestoreToRegistry() && {
+  void RestoreToRegistry() {
     for (const auto& flag_state : backup_registry_) {
-      std::move(*flag_state).Restore();
+      flag_state->Restore();
     }
   }
 
@@ -341,20 +321,20 @@ class FlagSaverImpl {
 
 }  // namespace flags_internal
 
-FlagSaver::FlagSaver()
-    : impl_(std::make_unique<flags_internal::FlagSaverImpl>()) {
+FlagSaver::FlagSaver() : impl_(new flags_internal::FlagSaverImpl) {
   impl_->SaveFromRegistry();
 }
 
 FlagSaver::~FlagSaver() {
   if (!impl_) return;
 
-  std::move(*impl_).RestoreToRegistry();
+  impl_->RestoreToRegistry();
+  delete impl_;
 }
 
 // --------------------------------------------------------------------
 
-CommandLineFlag* absl_nullable FindCommandLineFlag(absl::string_view name) {
+CommandLineFlag* FindCommandLineFlag(absl::string_view name) {
   if (name.empty()) return nullptr;
   flags_internal::FlagRegistry& registry =
       flags_internal::FlagRegistry::GlobalRegistry();
@@ -363,8 +343,7 @@ CommandLineFlag* absl_nullable FindCommandLineFlag(absl::string_view name) {
 
 // --------------------------------------------------------------------
 
-absl::flat_hash_map<absl::string_view, absl::CommandLineFlag* absl_nonnull>
-GetAllFlags() {
+absl::flat_hash_map<absl::string_view, absl::CommandLineFlag*> GetAllFlags() {
   absl::flat_hash_map<absl::string_view, absl::CommandLineFlag*> res;
   flags_internal::ForEachFlag([&](CommandLineFlag& flag) {
     if (!flag.IsRetired()) res.insert({flag.Name(), &flag});

@@ -25,12 +25,9 @@
 #ifndef ABSL_CRC_CRC32C_H_
 #define ABSL_CRC_CRC32C_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <ostream>
 
-#include "absl/base/config.h"
-#include "absl/crc/internal/crc32_x86_arm_combined_simd.h"
 #include "absl/crc/internal/crc32c_inline.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -86,6 +83,11 @@ crc32c_t ExtendCrc32cInternal(crc32c_t initial_crc,
 // CRC32C Computation Functions
 // -----------------------------------------------------------------------------
 
+// ComputeCrc32c()
+//
+// Returns the CRC32C value of the provided string.
+crc32c_t ComputeCrc32c(absl::string_view buf);
+
 // ExtendCrc32c()
 //
 // Computes a CRC32C value from an `initial_crc` CRC32C value including the
@@ -99,8 +101,8 @@ crc32c_t ExtendCrc32cInternal(crc32c_t initial_crc,
 // This operation has a runtime cost of O(`buf_to_add.size()`)
 inline crc32c_t ExtendCrc32c(crc32c_t initial_crc,
                              absl::string_view buf_to_add) {
-  // Short inputs are faster to process inline with a simple serial loop.
-  if (buf_to_add.size() < crc_internal::kSmallCutoff) {
+  // Approximately 75% of calls have size <= 64.
+  if (buf_to_add.size() <= 64) {
     uint32_t crc = static_cast<uint32_t>(initial_crc);
     if (crc_internal::ExtendCrc32cInline(&crc, buf_to_add.data(),
                                          buf_to_add.size())) {
@@ -108,13 +110,6 @@ inline crc32c_t ExtendCrc32c(crc32c_t initial_crc,
     }
   }
   return crc_internal::ExtendCrc32cInternal(initial_crc, buf_to_add);
-}
-
-// ComputeCrc32c()
-//
-// Returns the CRC32C value of the provided string.
-inline crc32c_t ComputeCrc32c(absl::string_view buf) {
-  return ExtendCrc32c(crc32c_t{0}, buf);
 }
 
 // ExtendCrc32cByZeroes()

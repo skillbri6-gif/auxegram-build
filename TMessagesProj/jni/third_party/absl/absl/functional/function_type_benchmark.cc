@@ -13,13 +13,13 @@
 // limitations under the License.
 
 #include <functional>
+#include <memory>
 #include <string>
 
+#include "benchmark/benchmark.h"
 #include "absl/base/attributes.h"
-#include "absl/base/config.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/functional/function_ref.h"
-#include "benchmark/benchmark.h"
 
 namespace absl {
 ABSL_NAMESPACE_BEGIN
@@ -39,7 +39,7 @@ struct LargeFunctor {
 };
 
 template <typename Function, typename... Args>
-ABSL_ATTRIBUTE_NOINLINE void CallFunction(Function f, Args&&... args) {
+void ABSL_ATTRIBUTE_NOINLINE CallFunction(Function f, Args&&... args) {
   f(std::forward<Args>(args)...);
 }
 

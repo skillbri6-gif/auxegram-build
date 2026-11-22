@@ -22,7 +22,6 @@
 #include <limits>
 
 #include "absl/base/attributes.h"
-#include "absl/base/config.h"
 #include "absl/base/optimization.h"
 
 namespace absl {
@@ -67,7 +66,7 @@ int64_t ExponentialBiased::GetSkipCount(int64_t mean) {
   }
   double value = std::rint(interval);
   bias_ = interval - value;
-  return static_cast<int64_t>(value);
+  return value;
 }
 
 int64_t ExponentialBiased::GetStride(int64_t mean) {

@@ -26,12 +26,6 @@ fi
 
 source "${ABSEIL_ROOT}/ci/cmake_common.sh"
 
-# Avoid depending on GitHub by looking for a cached copy of GoogleTest.
-if [[ -r "${KOKORO_GFILE_DIR:-}/distdir/googletest-${ABSL_GOOGLETEST_VERSION}.tar.gz" ]]; then
-  ABSL_GOOGLETEST_DOWNLOAD_URL="file:///distdir/googletest-${ABSL_GOOGLETEST_VERSION}.tar.gz"
-  DOCKER_EXTRA_ARGS="--mount type=bind,source=${KOKORO_GFILE_DIR}/distdir,target=/distdir,readonly ${DOCKER_EXTRA_ARGS:-}"
-fi
-
 source "${ABSEIL_ROOT}/ci/linux_docker_containers.sh"
 readonly DOCKER_CONTAINER=${LINUX_GCC_LATEST_CONTAINER}
 
@@ -44,7 +38,7 @@ time docker run \
     --rm \
     ${DOCKER_EXTRA_ARGS:-} \
     ${DOCKER_CONTAINER} \
-    /bin/sh -c "cmake /abseil-cpp-ro && make -j$(nproc) && make install"
+    /bin/bash -c "cmake /abseil-cpp-ro && make -j$(nproc) && make install"
 
 # Verify that a more complicated project works.
 for link_type in ${LINK_TYPE}; do
@@ -54,11 +48,11 @@ for link_type in ${LINK_TYPE}; do
     --tmpfs=/abseil-cpp:exec \
     --workdir=/abseil-cpp \
     --cap-add=SYS_PTRACE \
-    -e "ABSL_GOOGLETEST_VERSION=${ABSL_GOOGLETEST_VERSION}" \
+    -e "ABSL_GOOGLETEST_COMMIT=${ABSL_GOOGLETEST_COMMIT}" \
     -e "ABSL_GOOGLETEST_DOWNLOAD_URL=${ABSL_GOOGLETEST_DOWNLOAD_URL}" \
     -e "LINK_TYPE=${link_type}" \
     --rm \
     ${DOCKER_EXTRA_ARGS:-} \
     ${DOCKER_CONTAINER} \
-    /bin/sh -c "cp -r /abseil-cpp-ro/* . && CMake/install_test_project/test.sh"
+    /bin/bash -c "cp -r /abseil-cpp-ro/* . && CMake/install_test_project/test.sh"
 done

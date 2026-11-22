@@ -14,15 +14,14 @@
 
 #include "absl/random/internal/fastmath.h"
 
-#include <cmath>
-#include <cstdint>
-
 #include "gtest/gtest.h"
 
-#if defined(__EMSCRIPTEN__)
-// Emscripten has a less accurate implementation of std::log2 than most of
+#if defined(__native_client__) || defined(__EMSCRIPTEN__)
+// NACL has a less accurate implementation of std::log2 than most of
 // the other platforms. For some values which should have integral results,
-// sometimes Emscripten returns slightly larger values.
+// sometimes NACL returns slightly larger values.
+//
+// The MUSL libc used by emscripten also has a similar bug.
 #define ABSL_RANDOM_INACCURATE_LOG2
 #endif
 
@@ -89,11 +88,9 @@ TEST(FastMathTest, StirlingLogFactorial) {
   EXPECT_NEAR(StirlingLogFactorial(1.50), 0.284683, 1e-3);
   EXPECT_NEAR(StirlingLogFactorial(2.0), 0.69314718056, 1e-4);
 
-  double log_factorial = 0.0;
   for (int i = 2; i < 50; i++) {
     double d = static_cast<double>(i);
-    log_factorial += std::log(d);
-    EXPECT_NEAR(StirlingLogFactorial(d), log_factorial, 3e-5);
+    EXPECT_NEAR(StirlingLogFactorial(d), std::lgamma(d + 1), 3e-5);
   }
 }
 

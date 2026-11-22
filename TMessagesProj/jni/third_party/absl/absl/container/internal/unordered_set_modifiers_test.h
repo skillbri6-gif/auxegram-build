@@ -15,13 +15,8 @@
 #ifndef ABSL_CONTAINER_INTERNAL_UNORDERED_SET_MODIFIERS_TEST_H_
 #define ABSL_CONTAINER_INTERNAL_UNORDERED_SET_MODIFIERS_TEST_H_
 
-#include <cstddef>
-#include <type_traits>
-#include <vector>
-
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "absl/base/config.h"
 #include "absl/container/internal/hash_generator_testing.h"
 #include "absl/container/internal/hash_policy_testing.h"
 
@@ -35,9 +30,10 @@ class ModifiersTest : public ::testing::Test {};
 TYPED_TEST_SUITE_P(ModifiersTest);
 
 TYPED_TEST_P(ModifiersTest, Clear) {
-  using T = GeneratedType<TypeParam>;
+  using T = hash_internal::GeneratedType<TypeParam>;
   std::vector<T> values;
-  std::generate_n(std::back_inserter(values), 10, Generator<T>());
+  std::generate_n(std::back_inserter(values), 10,
+                  hash_internal::Generator<T>());
   TypeParam m(values.begin(), values.end());
   ASSERT_THAT(keys(m), ::testing::UnorderedElementsAreArray(values));
   m.clear();
@@ -46,8 +42,8 @@ TYPED_TEST_P(ModifiersTest, Clear) {
 }
 
 TYPED_TEST_P(ModifiersTest, Insert) {
-  using T = GeneratedType<TypeParam>;
-  T val = Generator<T>()();
+  using T = hash_internal::GeneratedType<TypeParam>;
+  T val = hash_internal::Generator<T>()();
   TypeParam m;
   auto p = m.insert(val);
   EXPECT_TRUE(p.second);
@@ -57,8 +53,8 @@ TYPED_TEST_P(ModifiersTest, Insert) {
 }
 
 TYPED_TEST_P(ModifiersTest, InsertHint) {
-  using T = GeneratedType<TypeParam>;
-  T val = Generator<T>()();
+  using T = hash_internal::GeneratedType<TypeParam>;
+  T val = hash_internal::Generator<T>()();
   TypeParam m;
   auto it = m.insert(m.end(), val);
   EXPECT_TRUE(it != m.end());
@@ -69,17 +65,18 @@ TYPED_TEST_P(ModifiersTest, InsertHint) {
 }
 
 TYPED_TEST_P(ModifiersTest, InsertRange) {
-  using T = GeneratedType<TypeParam>;
+  using T = hash_internal::GeneratedType<TypeParam>;
   std::vector<T> values;
-  std::generate_n(std::back_inserter(values), 10, Generator<T>());
+  std::generate_n(std::back_inserter(values), 10,
+                  hash_internal::Generator<T>());
   TypeParam m;
   m.insert(values.begin(), values.end());
   ASSERT_THAT(keys(m), ::testing::UnorderedElementsAreArray(values));
 }
 
 TYPED_TEST_P(ModifiersTest, InsertWithinCapacity) {
-  using T = GeneratedType<TypeParam>;
-  T val = Generator<T>()();
+  using T = hash_internal::GeneratedType<TypeParam>;
+  T val = hash_internal::Generator<T>()();
   TypeParam m;
   m.reserve(10);
   const size_t original_capacity = m.bucket_count();
@@ -91,9 +88,10 @@ TYPED_TEST_P(ModifiersTest, InsertWithinCapacity) {
 
 TYPED_TEST_P(ModifiersTest, InsertRangeWithinCapacity) {
 #if !defined(__GLIBCXX__)
-  using T = GeneratedType<TypeParam>;
+  using T = hash_internal::GeneratedType<TypeParam>;
   std::vector<T> base_values;
-  std::generate_n(std::back_inserter(base_values), 10, Generator<T>());
+  std::generate_n(std::back_inserter(base_values), 10,
+                  hash_internal::Generator<T>());
   std::vector<T> values;
   while (values.size() != 100) {
     values.insert(values.end(), base_values.begin(), base_values.end());
@@ -107,8 +105,8 @@ TYPED_TEST_P(ModifiersTest, InsertRangeWithinCapacity) {
 }
 
 TYPED_TEST_P(ModifiersTest, Emplace) {
-  using T = GeneratedType<TypeParam>;
-  T val = Generator<T>()();
+  using T = hash_internal::GeneratedType<TypeParam>;
+  T val = hash_internal::Generator<T>()();
   TypeParam m;
   // TODO(alkis): We need a way to run emplace in a more meaningful way. Perhaps
   // with test traits/policy.
@@ -121,8 +119,8 @@ TYPED_TEST_P(ModifiersTest, Emplace) {
 }
 
 TYPED_TEST_P(ModifiersTest, EmplaceHint) {
-  using T = GeneratedType<TypeParam>;
-  T val = Generator<T>()();
+  using T = hash_internal::GeneratedType<TypeParam>;
+  T val = hash_internal::Generator<T>()();
   TypeParam m;
   // TODO(alkis): We need a way to run emplace in a more meaningful way. Perhaps
   // with test traits/policy.
@@ -133,7 +131,7 @@ TYPED_TEST_P(ModifiersTest, EmplaceHint) {
 }
 
 template <class V>
-using IfNotVoid = std::enable_if_t<!std::is_void_v<V>, V>;
+using IfNotVoid = typename std::enable_if<!std::is_void<V>::value, V>::type;
 
 // In openmap we chose not to return the iterator from erase because that's
 // more expensive. As such we adapt erase to return an iterator here.
@@ -152,9 +150,10 @@ struct EraseFirst {
 };
 
 TYPED_TEST_P(ModifiersTest, Erase) {
-  using T = GeneratedType<TypeParam>;
+  using T = hash_internal::GeneratedType<TypeParam>;
   std::vector<T> values;
-  std::generate_n(std::back_inserter(values), 10, Generator<T>());
+  std::generate_n(std::back_inserter(values), 10,
+                  hash_internal::Generator<T>());
   TypeParam m(values.begin(), values.end());
   ASSERT_THAT(keys(m), ::testing::UnorderedElementsAreArray(values));
   std::vector<T> values2;
@@ -168,9 +167,10 @@ TYPED_TEST_P(ModifiersTest, Erase) {
 }
 
 TYPED_TEST_P(ModifiersTest, EraseRange) {
-  using T = GeneratedType<TypeParam>;
+  using T = hash_internal::GeneratedType<TypeParam>;
   std::vector<T> values;
-  std::generate_n(std::back_inserter(values), 10, Generator<T>());
+  std::generate_n(std::back_inserter(values), 10,
+                  hash_internal::Generator<T>());
   TypeParam m(values.begin(), values.end());
   ASSERT_THAT(keys(m), ::testing::UnorderedElementsAreArray(values));
   auto it = m.erase(m.begin(), m.end());
@@ -179,9 +179,10 @@ TYPED_TEST_P(ModifiersTest, EraseRange) {
 }
 
 TYPED_TEST_P(ModifiersTest, EraseKey) {
-  using T = GeneratedType<TypeParam>;
+  using T = hash_internal::GeneratedType<TypeParam>;
   std::vector<T> values;
-  std::generate_n(std::back_inserter(values), 10, Generator<T>());
+  std::generate_n(std::back_inserter(values), 10,
+                  hash_internal::Generator<T>());
   TypeParam m(values.begin(), values.end());
   ASSERT_THAT(keys(m), ::testing::UnorderedElementsAreArray(values));
   EXPECT_EQ(1, m.erase(values[0]));
@@ -191,11 +192,11 @@ TYPED_TEST_P(ModifiersTest, EraseKey) {
 }
 
 TYPED_TEST_P(ModifiersTest, Swap) {
-  using T = GeneratedType<TypeParam>;
+  using T = hash_internal::GeneratedType<TypeParam>;
   std::vector<T> v1;
   std::vector<T> v2;
-  std::generate_n(std::back_inserter(v1), 5, Generator<T>());
-  std::generate_n(std::back_inserter(v2), 5, Generator<T>());
+  std::generate_n(std::back_inserter(v1), 5, hash_internal::Generator<T>());
+  std::generate_n(std::back_inserter(v2), 5, hash_internal::Generator<T>());
   TypeParam m1(v1.begin(), v1.end());
   TypeParam m2(v2.begin(), v2.end());
   EXPECT_THAT(keys(m1), ::testing::UnorderedElementsAreArray(v1));

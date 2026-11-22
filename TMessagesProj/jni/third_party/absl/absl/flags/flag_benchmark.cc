@@ -15,8 +15,6 @@
 
 #include <stdint.h>
 
-#include <cstddef>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -26,6 +24,7 @@
 #include "absl/flags/reflection.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "absl/types/optional.h"
 #include "benchmark/benchmark.h"
 
 namespace {
@@ -33,10 +32,10 @@ using String = std::string;
 using VectorOfStrings = std::vector<std::string>;
 using AbslDuration = absl::Duration;
 
-// We do not want to take over marshalling for the types std::optional<int>,
-// std::optional<std::string> which we do not own. Instead we introduce unique
+// We do not want to take over marshalling for the types absl::optional<int>,
+// absl::optional<std::string> which we do not own. Instead we introduce unique
 // "aliases" to these types, which we do.
-using AbslOptionalInt = std::optional<int>;
+using AbslOptionalInt = absl::optional<int>;
 struct OptionalInt : AbslOptionalInt {
   using AbslOptionalInt::AbslOptionalInt;
 };
@@ -55,7 +54,7 @@ std::string AbslUnparseFlag(const OptionalInt& flag) {
   return !flag ? "" : absl::UnparseFlag(*flag);
 }
 
-using AbslOptionalString = std::optional<std::string>;
+using AbslOptionalString = absl::optional<std::string>;
 struct OptionalString : AbslOptionalString {
   using AbslOptionalString::AbslOptionalString;
 };
@@ -76,8 +75,8 @@ std::string AbslUnparseFlag(const OptionalString& flag) {
 
 struct UDT {
   UDT() = default;
-  UDT(const UDT&) = default;
-  UDT& operator=(const UDT&) = default;
+  UDT(const UDT&) {}
+  UDT& operator=(const UDT&) { return *this; }
 };
 // Next two functions represent Abseil Flags marshalling for UDT.
 bool AbslParseFlag(absl::string_view, UDT*, std::string*) { return true; }
@@ -144,7 +143,7 @@ constexpr size_t kNumFlags = 0 REPLICATE(COUNT, _, _);
 #pragma clang section data = ".benchmark_flags"
 #endif
 #define DEFINE_FLAG(T, name, index) ABSL_FLAG(T, name##_##index, {}, "");
-#define FLAG_DEF(T) REPLICATE(DEFINE_FLAG, T, T##_flag)
+#define FLAG_DEF(T) REPLICATE(DEFINE_FLAG, T, T##_flag);
 BENCHMARKED_TYPES(FLAG_DEF)
 #if defined(__clang__) && defined(__linux__)
 #pragma clang section data = ""

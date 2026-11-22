@@ -17,14 +17,10 @@
 
 #include <cassert>
 #include <cmath>
-#include <cstdint>
-#include <ios>
 #include <istream>
 #include <limits>
-#include <ostream>
 #include <type_traits>
 
-#include "absl/base/config.h"
 #include "absl/meta/type_traits.h"
 #include "absl/random/internal/fast_uniform_bits.h"
 #include "absl/random/internal/generate_real.h"
@@ -67,7 +63,7 @@ class exponential_distribution {
     result_type neg_inv_lambda_;
 
     static_assert(
-        std::is_floating_point_v<RealType>,
+        std::is_floating_point<RealType>::value,
         "Class-template absl::exponential_distribution<> must be parameterized "
         "using a floating-point type.");
   };
@@ -127,7 +123,7 @@ exponential_distribution<RealType>::operator()(
   using random_internal::GenerateNegativeTag;
   using random_internal::GenerateRealFromBits;
   using real_type =
-      std::conditional_t<std::is_same_v<RealType, float>, float, double>;
+      absl::conditional_t<std::is_same<RealType, float>::value, float, double>;
 
   const result_type u = GenerateRealFromBits<real_type, GenerateNegativeTag,
                                              false>(fast_u64_(g));  // U(-1, 0)
@@ -153,16 +149,12 @@ std::basic_istream<CharT, Traits>& operator>>(
     exponential_distribution<RealType>& x) {  // NOLINT(runtime/references)
   using result_type = typename exponential_distribution<RealType>::result_type;
   using param_type = typename exponential_distribution<RealType>::param_type;
+  result_type lambda;
 
   auto saver = random_internal::make_istream_state_saver(is);
-  const result_type lambda =
-      random_internal::read_floating_point<result_type>(is);
+  lambda = random_internal::read_floating_point<result_type>(is);
   if (!is.fail()) {
-    if (lambda > 0 && lambda <= (std::numeric_limits<result_type>::max)()) {
-      x.param(param_type(lambda));
-    } else {
-      is.setstate(std::ios_base::failbit);
-    }
+    x.param(param_type(lambda));
   }
   return is;
 }

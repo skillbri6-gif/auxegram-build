@@ -42,8 +42,6 @@
 //   If neither Dynamic Annotations nor Clang thread-safety warnings are
 //   enabled, then all annotation-macros expand to empty.
 
-// SKIP_ABSL_INLINE_NAMESPACE_CHECK
-
 #ifndef ABSL_BASE_INTERNAL_DYNAMIC_ANNOTATIONS_H_
 #define ABSL_BASE_INTERNAL_DYNAMIC_ANNOTATIONS_H_
 
@@ -58,7 +56,7 @@
 #define DYNAMIC_ANNOTATIONS_ENABLED 0
 #endif
 
-#if defined(__clang__)
+#if defined(__clang__) && !defined(SWIG)
 #define ABSL_INTERNAL_IGNORE_READS_ATTRIBUTE_ENABLED 1
 #endif
 
@@ -91,7 +89,7 @@
 #endif
 
 // Memory annotations are also made available to LLVM's Memory Sanitizer
-#if defined(ABSL_HAVE_MEMORY_SANITIZER)
+#if defined(ABSL_HAVE_MEMORY_SANITIZER) && !defined(__native_client__)
 #define ABSL_INTERNAL_MEMORY_ANNOTATIONS_ENABLED 1
 #endif
 

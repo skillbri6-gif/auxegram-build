@@ -15,22 +15,17 @@
 #ifndef ABSL_HASH_HASH_TESTING_H_
 #define ABSL_HASH_HASH_TESTING_H_
 
-#include <cstddef>
-#include <functional>
 #include <initializer_list>
-#include <string>
 #include <tuple>
 #include <type_traits>
-#include <utility>
-#include <variant>
 #include <vector>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "absl/base/config.h"
 #include "absl/hash/internal/spy_hash_state.h"
 #include "absl/meta/type_traits.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/variant.h"
 
 namespace absl {
 ABSL_NAMESPACE_BEGIN
@@ -133,7 +128,7 @@ ABSL_NAMESPACE_BEGIN
 //   }
 //   friend bool operator==(Bad4 x, Bad4 y) {
 //    // Compare two ranges for equality. C++14 code can instead use std::equal.
-//     return std::equal(x.p, x.p + x.size, y.p, y.p + y.size);
+//     return absl::equal(x.p, x.p + x.size, y.p, y.p + y.size);
 //   }
 // };
 //
@@ -145,40 +140,61 @@ ABSL_NAMESPACE_BEGIN
 //       H::combine_contiguous(std::move(state), x.p, x.p + x.size), x.size);
 // }
 //
-template <int&... ExplicitBarrier, typename Container,
-          typename Eq = std::equal_to<>>
-testing::AssertionResult VerifyTypeImplementsAbslHashCorrectly(
-    const Container& values, Eq equals = Eq{});
+template <int&... ExplicitBarrier, typename Container>
+ABSL_MUST_USE_RESULT testing::AssertionResult
+VerifyTypeImplementsAbslHashCorrectly(const Container& values);
 
-template <int&..., typename T, typename Eq = std::equal_to<>>
-testing::AssertionResult VerifyTypeImplementsAbslHashCorrectly(
-    std::initializer_list<T> values, Eq equals = Eq{});
+template <int&... ExplicitBarrier, typename Container, typename Eq>
+ABSL_MUST_USE_RESULT testing::AssertionResult
+VerifyTypeImplementsAbslHashCorrectly(const Container& values, Eq equals);
+
+template <int&..., typename T>
+ABSL_MUST_USE_RESULT testing::AssertionResult
+VerifyTypeImplementsAbslHashCorrectly(std::initializer_list<T> values);
+
+template <int&..., typename T, typename Eq>
+ABSL_MUST_USE_RESULT testing::AssertionResult
+VerifyTypeImplementsAbslHashCorrectly(std::initializer_list<T> values,
+                                      Eq equals);
 
 namespace hash_internal {
 
+struct PrintVisitor {
+  size_t index;
+  template <typename T>
+  std::string operator()(const T* value) const {
+    return absl::StrCat("#", index, "(", testing::PrintToString(*value), ")");
+  }
+};
+
+template <typename Eq>
+struct EqVisitor {
+  Eq eq;
+  template <typename T, typename U>
+  bool operator()(const T* t, const U* u) const {
+    return eq(*t, *u);
+  }
+};
+
+struct ExpandVisitor {
+  template <typename T>
+  SpyHashState operator()(const T* value) const {
+    return SpyHashState::combine(SpyHashState(), *value);
+  }
+};
+
 template <typename Container, typename Eq>
-testing::AssertionResult VerifyTypeImplementsAbslHashCorrectly(
-    const Container& values, Eq equals) {
+ABSL_MUST_USE_RESULT testing::AssertionResult
+VerifyTypeImplementsAbslHashCorrectly(const Container& values, Eq equals) {
   using V = typename Container::value_type;
 
   struct Info {
     const V& value;
     size_t index;
     std::string ToString() const {
-      return std::visit(
-          [this](const auto* v) {
-            return absl::StrCat("#", index, "(", testing::PrintToString(*v),
-                                ")");
-          },
-          value);
+      return absl::visit(PrintVisitor{index}, value);
     }
-    SpyHashState expand() const {
-      return std::visit(
-          [](const auto* v) {
-            return SpyHashState::combine(SpyHashState(), *v);
-          },
-          value);
-    }
+    SpyHashState expand() const { return absl::visit(ExpandVisitor{}, value); }
   };
 
   using EqClass = std::vector<Info>;
@@ -189,11 +205,7 @@ testing::AssertionResult VerifyTypeImplementsAbslHashCorrectly(
   for (const auto& value : values) {
     EqClass* c = nullptr;
     for (auto& eqclass : classes) {
-      if (std::visit(
-              [&](const auto* t, const auto* u) -> bool {
-                return equals(*t, *u);
-              },
-              value, eqclass[0].value)) {
+      if (absl::visit(EqVisitor<Eq>{equals}, value, eqclass[0].value)) {
         c = &eqclass;
         break;
       }
@@ -232,8 +244,7 @@ testing::AssertionResult VerifyTypeImplementsAbslHashCorrectly(
       if (v.expand() != expected) {
         return testing::AssertionFailure()
                << "Values " << c[0].ToString() << " and " << v.ToString()
-               << " evaluate as equal but have unequal hash expansions ("
-               << expected << " vs. " << v.expand() << ").";
+               << " evaluate as equal but have an unequal hash expansion.";
       }
     }
 
@@ -245,18 +256,17 @@ testing::AssertionResult VerifyTypeImplementsAbslHashCorrectly(
         case SpyHashState::CompareResult::kEqual:
           return testing::AssertionFailure()
                  << "Values " << c[0].ToString() << " and " << c2[0].ToString()
-                 << " evaluate as unequal but have an equal hash expansion:"
-                 << c2_hash << ".";
+                 << " evaluate as unequal but have an equal hash expansion.";
         case SpyHashState::CompareResult::kBSuffixA:
           return testing::AssertionFailure()
-                 << "Hash expansion of " << c2[0].ToString() << ";" << c2_hash
+                 << "Hash expansion of " << c2[0].ToString()
                  << " is a suffix of the hash expansion of " << c[0].ToString()
-                 << ";" << expected << ".";
+                 << ".";
         case SpyHashState::CompareResult::kASuffixB:
           return testing::AssertionFailure()
-                 << "Hash expansion of " << c[0].ToString() << ";"
-                 << expected << " is a suffix of the hash expansion of "
-                 << c2[0].ToString() << ";" << c2_hash << ".";
+                 << "Hash expansion of " << c[0].ToString()
+                 << " is a suffix of the hash expansion of " << c2[0].ToString()
+                 << ".";
         case SpyHashState::CompareResult::kUnequal:
           break;
       }
@@ -267,7 +277,7 @@ testing::AssertionResult VerifyTypeImplementsAbslHashCorrectly(
 
 template <typename... T>
 struct TypeSet {
-  template <typename U, bool = std::disjunction_v<std::is_same<T, U>...>>
+  template <typename U, bool = disjunction<std::is_same<T, U>...>::value>
   struct Insert {
     using type = TypeSet<U, T...>;
   };
@@ -287,11 +297,11 @@ struct MakeTypeSet<T, Ts...> : MakeTypeSet<Ts...>::template Insert<T>::type {};
 
 template <typename... T>
 using VariantForTypes = typename MakeTypeSet<
-    const std::decay_t<T>*...>::template apply<std::variant>;
+    const typename std::decay<T>::type*...>::template apply<absl::variant>;
 
 template <typename Container>
 struct ContainerAsVector {
-  using V = std::variant<const typename Container::value_type*>;
+  using V = absl::variant<const typename Container::value_type*>;
   using Out = std::vector<V>;
 
   static Out Do(const Container& values) {
@@ -303,31 +313,60 @@ struct ContainerAsVector {
 
 template <typename... T>
 struct ContainerAsVector<std::tuple<T...>> {
-  using V = std::conditional_t<sizeof...(T) == 0, std::variant<const int*>,
-                               VariantForTypes<T...>>;
+  using V = VariantForTypes<T...>;
   using Out = std::vector<V>;
 
+  template <size_t... I>
+  static Out DoImpl(const std::tuple<T...>& tuple, absl::index_sequence<I...>) {
+    return Out{&std::get<I>(tuple)...};
+  }
+
   static Out Do(const std::tuple<T...>& values) {
-    if constexpr (sizeof...(T) == 0) {
-      return {};
-    } else {
-      return std::apply([](const auto&... vs) { return Out{&vs...}; }, values);
-    }
+    return DoImpl(values, absl::index_sequence_for<T...>());
+  }
+};
+
+template <>
+struct ContainerAsVector<std::tuple<>> {
+  static std::vector<VariantForTypes<int>> Do(std::tuple<>) { return {}; }
+};
+
+struct DefaultEquals {
+  template <typename T, typename U>
+  bool operator()(const T& t, const U& u) const {
+    return t == u;
   }
 };
 
 }  // namespace hash_internal
 
+template <int&..., typename Container>
+ABSL_MUST_USE_RESULT testing::AssertionResult
+VerifyTypeImplementsAbslHashCorrectly(const Container& values) {
+  return hash_internal::VerifyTypeImplementsAbslHashCorrectly(
+      hash_internal::ContainerAsVector<Container>::Do(values),
+      hash_internal::DefaultEquals{});
+}
+
 template <int&..., typename Container, typename Eq>
-testing::AssertionResult VerifyTypeImplementsAbslHashCorrectly(
-    const Container& values, Eq equals) {
+ABSL_MUST_USE_RESULT testing::AssertionResult
+VerifyTypeImplementsAbslHashCorrectly(const Container& values, Eq equals) {
   return hash_internal::VerifyTypeImplementsAbslHashCorrectly(
       hash_internal::ContainerAsVector<Container>::Do(values), equals);
 }
 
+template <int&..., typename T>
+ABSL_MUST_USE_RESULT testing::AssertionResult
+VerifyTypeImplementsAbslHashCorrectly(std::initializer_list<T> values) {
+  return hash_internal::VerifyTypeImplementsAbslHashCorrectly(
+      hash_internal::ContainerAsVector<std::initializer_list<T>>::Do(values),
+      hash_internal::DefaultEquals{});
+}
+
 template <int&..., typename T, typename Eq>
-testing::AssertionResult VerifyTypeImplementsAbslHashCorrectly(
-    std::initializer_list<T> values, Eq equals) {
+ABSL_MUST_USE_RESULT testing::AssertionResult
+VerifyTypeImplementsAbslHashCorrectly(std::initializer_list<T> values,
+                                      Eq equals) {
   return hash_internal::VerifyTypeImplementsAbslHashCorrectly(
       hash_internal::ContainerAsVector<std::initializer_list<T>>::Do(values),
       equals);

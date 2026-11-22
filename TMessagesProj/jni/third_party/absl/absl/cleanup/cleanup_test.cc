@@ -20,7 +20,6 @@
 
 #include "gtest/gtest.h"
 #include "absl/base/config.h"
-#include "absl/cleanup/internal/cleanup.h"
 #include "absl/utility/utility.h"
 
 namespace {
@@ -29,7 +28,7 @@ using Tag = absl::cleanup_internal::Tag;
 
 template <typename Type1, typename Type2>
 constexpr bool IsSame() {
-  return (std::is_same_v<Type1, Type2>);
+  return (std::is_same<Type1, Type2>::value);
 }
 
 struct IdentityFactory {
@@ -49,7 +48,7 @@ class FunctorClass {
   explicit FunctorClass(Callback callback) : callback_(std::move(callback)) {}
 
   FunctorClass(FunctorClass&& other)
-      : callback_(std::exchange(other.callback_, Callback())) {}
+      : callback_(absl::exchange(other.callback_, Callback())) {}
 
   FunctorClass(const FunctorClass&) = delete;
 
@@ -98,41 +97,48 @@ TYPED_TEST(CleanupTest, FactoryProducesCorrectType) {
     auto cleanup = absl::MakeCleanup(std::move(callback));
 
     static_assert(
-        IsSame<absl::Cleanup<Tag, decltype(callback)>, decltype(cleanup)>());
+        IsSame<absl::Cleanup<Tag, decltype(callback)>, decltype(cleanup)>(),
+        "");
   }
 
   {
     auto cleanup = absl::MakeCleanup(&FnPtrFunction);
 
-    static_assert(IsSame<absl::Cleanup<Tag, void (*)()>, decltype(cleanup)>());
+    static_assert(IsSame<absl::Cleanup<Tag, void (*)()>, decltype(cleanup)>(),
+                  "");
   }
 
   {
     auto cleanup = absl::MakeCleanup(FnPtrFunction);
 
-    static_assert(IsSame<absl::Cleanup<Tag, void (*)()>, decltype(cleanup)>());
+    static_assert(IsSame<absl::Cleanup<Tag, void (*)()>, decltype(cleanup)>(),
+                  "");
   }
 }
 
+#if defined(ABSL_HAVE_CLASS_TEMPLATE_ARGUMENT_DEDUCTION)
 TYPED_TEST(CleanupTest, CTADProducesCorrectType) {
   {
     auto callback = TypeParam::AsCallback([] {});
     absl::Cleanup cleanup = std::move(callback);
 
     static_assert(
-        IsSame<absl::Cleanup<Tag, decltype(callback)>, decltype(cleanup)>());
+        IsSame<absl::Cleanup<Tag, decltype(callback)>, decltype(cleanup)>(),
+        "");
   }
 
   {
     absl::Cleanup cleanup = &FnPtrFunction;
 
-    static_assert(IsSame<absl::Cleanup<Tag, void (*)()>, decltype(cleanup)>());
+    static_assert(IsSame<absl::Cleanup<Tag, void (*)()>, decltype(cleanup)>(),
+                  "");
   }
 
   {
     absl::Cleanup cleanup = FnPtrFunction;
 
-    static_assert(IsSame<absl::Cleanup<Tag, void (*)()>, decltype(cleanup)>());
+    static_assert(IsSame<absl::Cleanup<Tag, void (*)()>, decltype(cleanup)>(),
+                  "");
   }
 }
 
@@ -143,7 +149,7 @@ TYPED_TEST(CleanupTest, FactoryAndCTADProduceSameType) {
     absl::Cleanup deduction_cleanup = callback;
 
     static_assert(
-        IsSame<decltype(factory_cleanup), decltype(deduction_cleanup)>());
+        IsSame<decltype(factory_cleanup), decltype(deduction_cleanup)>(), "");
   }
 
   {
@@ -152,7 +158,7 @@ TYPED_TEST(CleanupTest, FactoryAndCTADProduceSameType) {
     absl::Cleanup deduction_cleanup = FunctorClassFactory::AsCallback([] {});
 
     static_assert(
-        IsSame<decltype(factory_cleanup), decltype(deduction_cleanup)>());
+        IsSame<decltype(factory_cleanup), decltype(deduction_cleanup)>(), "");
   }
 
   {
@@ -161,7 +167,7 @@ TYPED_TEST(CleanupTest, FactoryAndCTADProduceSameType) {
     absl::Cleanup deduction_cleanup = StdFunctionFactory::AsCallback([] {});
 
     static_assert(
-        IsSame<decltype(factory_cleanup), decltype(deduction_cleanup)>());
+        IsSame<decltype(factory_cleanup), decltype(deduction_cleanup)>(), "");
   }
 
   {
@@ -169,7 +175,7 @@ TYPED_TEST(CleanupTest, FactoryAndCTADProduceSameType) {
     absl::Cleanup deduction_cleanup = &FnPtrFunction;
 
     static_assert(
-        IsSame<decltype(factory_cleanup), decltype(deduction_cleanup)>());
+        IsSame<decltype(factory_cleanup), decltype(deduction_cleanup)>(), "");
   }
 
   {
@@ -177,9 +183,10 @@ TYPED_TEST(CleanupTest, FactoryAndCTADProduceSameType) {
     absl::Cleanup deduction_cleanup = FnPtrFunction;
 
     static_assert(
-        IsSame<decltype(factory_cleanup), decltype(deduction_cleanup)>());
+        IsSame<decltype(factory_cleanup), decltype(deduction_cleanup)>(), "");
   }
 }
+#endif  // defined(ABSL_HAVE_CLASS_TEMPLATE_ARGUMENT_DEDUCTION)
 
 TYPED_TEST(CleanupTest, BasicUsage) {
   bool called = false;

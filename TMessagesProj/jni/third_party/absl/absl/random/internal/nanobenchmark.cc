@@ -17,6 +17,7 @@
 #include <sys/types.h>
 
 #include <algorithm>  // sort
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -26,9 +27,7 @@
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
-#include "absl/base/config.h"
 #include "absl/base/internal/raw_logging.h"
 #include "absl/random/internal/platform.h"
 #include "absl/random/internal/randen_engine.h"
@@ -59,6 +58,15 @@
 // clock_gettime
 #if defined(ABSL_ARCH_ARM) || defined(ABSL_ARCH_AARCH64)
 #include <time.h>  // NOLINT
+#endif
+
+// ABSL_RANDOM_INTERNAL_ATTRIBUTE_NEVER_INLINE prevents inlining of the method.
+#if ABSL_HAVE_ATTRIBUTE(noinline) || (defined(__GNUC__) && !defined(__clang__))
+#define ABSL_RANDOM_INTERNAL_ATTRIBUTE_NEVER_INLINE __attribute__((noinline))
+#elif defined(_MSC_VER)
+#define ABSL_RANDOM_INTERNAL_ATTRIBUTE_NEVER_INLINE __declspec(noinline)
+#else
+#define ABSL_RANDOM_INTERNAL_ATTRIBUTE_NEVER_INLINE
 #endif
 
 namespace absl {
@@ -467,10 +475,7 @@ Ticks TimerResolution() {
   return robust_statistics::Mode(repetitions);
 }
 
-Ticks GetTimerResolution() {
-  static const Ticks timer_resolution = TimerResolution();
-  return timer_resolution;
-}
+static const Ticks timer_resolution = TimerResolution();
 
 // Estimates the expected value of "lambda" values with a variable number of
 // samples until the variability "rel_mad" is less than "max_rel_mad".
@@ -497,7 +502,7 @@ Ticks SampleUntilStable(const double max_rel_mad, double* rel_mad,
 
   // Percentage is too strict for tiny differences, so also allow a small
   // absolute "median absolute deviation".
-  const Ticks max_abs_mad = (GetTimerResolution() + 99) / 100;
+  const Ticks max_abs_mad = (timer_resolution + 99) / 100;
   *rel_mad = 0.0;  // ensure initialized
 
   for (size_t eval = 0; eval < p.max_evals; ++eval, samples_per_eval *= 2) {
@@ -543,7 +548,7 @@ using InputVec = std::vector<FuncInput>;
 // Returns vector of unique input values.
 InputVec UniqueInputs(const FuncInput* inputs, const size_t num_inputs) {
   InputVec unique(inputs, inputs + num_inputs);
-  absl::c_sort(unique);
+  std::sort(unique.begin(), unique.end());
   unique.erase(std::unique(unique.begin(), unique.end()), unique.end());
   return unique;
 }
@@ -572,7 +577,7 @@ size_t NumSkip(const Func func, const void* arg, const InputVec& unique,
     const Ticks total = SampleUntilStable(
         p.target_rel_mad, &rel_mad, p,
         [func, arg, input]() { PreventElision(func(arg, input)); });
-    min_duration = (std::min)(min_duration, total - GetTimerResolution());
+    min_duration = (std::min)(min_duration, total - timer_resolution);
   }
 
   // Number of repetitions required to reach the target resolution.
@@ -582,7 +587,7 @@ size_t NumSkip(const Func func, const void* arg, const InputVec& unique,
       min_duration == 0 ? 0 : (max_skip + min_duration - 1) / min_duration;
   if (p.verbose) {
     ABSL_RAW_LOG(INFO, "res=%u max_skip=%zu min_dur=%u num_skip=%zu\n",
-                 GetTimerResolution(), max_skip, min_duration, num_skip);
+                 timer_resolution, max_skip, min_duration, num_skip);
   }
   return num_skip;
 }
@@ -602,7 +607,7 @@ InputVec ReplicateInputs(const FuncInput* inputs, const size_t num_inputs,
     full.insert(full.end(), inputs, inputs + num_inputs);
   }
   absl::random_internal::randen_engine<uint32_t> rng;
-  absl::c_shuffle(full, rng);
+  std::shuffle(full.begin(), full.end(), rng);
   return full;
 }
 
@@ -610,20 +615,20 @@ InputVec ReplicateInputs(const FuncInput* inputs, const size_t num_inputs,
 // randomly selected occurrences of "input_to_skip" removed.
 void FillSubset(const InputVec& full, const FuncInput input_to_skip,
                 const size_t num_skip, InputVec* subset) {
-  const ptrdiff_t count = absl::c_count(full, input_to_skip);
+  const size_t count = std::count(full.begin(), full.end(), input_to_skip);
   // Generate num_skip random indices: which occurrence to skip.
   std::vector<uint32_t> omit;
   // Replacement for std::iota, not yet available in MSVC builds.
   omit.reserve(count);
-  for (ptrdiff_t i = 0; i < count; ++i) {
+  for (size_t i = 0; i < count; ++i) {
     omit.push_back(i);
   }
   // omit[] is the same on every call, but that's OK because they identify the
   // Nth instance of input_to_skip, so the position within full[] differs.
   absl::random_internal::randen_engine<uint32_t> rng;
-  absl::c_shuffle(omit, rng);
+  std::shuffle(omit.begin(), omit.end(), rng);
   omit.resize(num_skip);
-  absl::c_sort(omit);
+  std::sort(omit.begin(), omit.end());
 
   uint32_t occurrence = ~0u;  // 0 after preincrement
   size_t idx_omit = 0;        // cursor within omit[]
@@ -664,8 +669,8 @@ Ticks TotalDuration(const Func func, const void* arg, const InputVec* inputs,
 }
 
 // (Nearly) empty Func for measuring timer overhead/resolution.
-ABSL_ATTRIBUTE_NOINLINE FuncOutput EmptyFunc(const void* arg [[maybe_unused]],
-                                             const FuncInput input) {
+ABSL_RANDOM_INTERNAL_ATTRIBUTE_NEVER_INLINE FuncOutput
+EmptyFunc(const void* arg, const FuncInput input) {
   return input;
 }
 

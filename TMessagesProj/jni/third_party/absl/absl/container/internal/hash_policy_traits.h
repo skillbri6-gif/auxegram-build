@@ -21,47 +21,44 @@
 #include <type_traits>
 #include <utility>
 
-#include "absl/base/config.h"
 #include "absl/container/internal/common_policy_traits.h"
-#include "absl/container/internal/container_memory.h"
 #include "absl/meta/type_traits.h"
 
 namespace absl {
 ABSL_NAMESPACE_BEGIN
 namespace container_internal {
 
-// Avoid comparing function addresses with nullptr during constant evaluation,
-// which GCC rejects with UBSan enabled.
-// https://gcc.gnu.org/bugzilla/show_bug.cgi?id=71962
-template <HashSlotFn kPolicyFn, HashSlotFn kFallbackFn>
-struct HashSlotFnSelector {
-  static constexpr HashSlotFn kValue = kPolicyFn;
-};
-
-template <HashSlotFn kFallbackFn>
-struct HashSlotFnSelector<nullptr, kFallbackFn> {
-  static constexpr HashSlotFn kValue = kFallbackFn;
-};
-
 // Defines how slots are initialized/destroyed/moved.
 template <class Policy, class = void>
-  struct hash_policy_traits : common_policy_traits<Policy> {
+struct hash_policy_traits : common_policy_traits<Policy> {
   // The type of the keys stored in the hashtable.
   using key_type = typename Policy::key_type;
 
  private:
   struct ReturnKey {
+    // When C++17 is available, we can use std::launder to provide mutable
+    // access to the key for use in node handle.
+#if defined(__cpp_lib_launder) && __cpp_lib_launder >= 201606
+    template <class Key,
+              absl::enable_if_t<std::is_lvalue_reference<Key>::value, int> = 0>
+    static key_type& Impl(Key&& k, int) {
+      return *std::launder(
+          const_cast<key_type*>(std::addressof(std::forward<Key>(k))));
+    }
+#endif
+
+    template <class Key>
+    static Key Impl(Key&& k, char) {
+      return std::forward<Key>(k);
+    }
+
     // When Key=T&, we forward the lvalue reference.
-    // When Key=T, we return by value to avoid a dangling reference
-    // (e.g., for string_hash_map).
+    // When Key=T, we return by value to avoid a dangling reference.
+    // eg, for string_hash_map.
     template <class Key, class... Args>
-    std::conditional_t<std::is_lvalue_reference_v<Key>, key_type&, Key>
-    operator()(Key&& k, const Args&...) const {
-      if constexpr (std::is_lvalue_reference_v<Key>) {
-        return *std::launder(const_cast<key_type*>(std::addressof(k)));
-      } else {
-        return std::forward<Key>(k);
-      }
+    auto operator()(Key&& k, const Args&...) const
+        -> decltype(Impl(std::forward<Key>(k), 0)) {
+      return Impl(std::forward<Key>(k), 0);
     }
   };
 
@@ -69,32 +66,8 @@ template <class Policy, class = void>
   struct ConstantIteratorsImpl : std::false_type {};
 
   template <class P>
-  struct ConstantIteratorsImpl<P, std::void_t<typename P::constant_iterators>>
+  struct ConstantIteratorsImpl<P, absl::void_t<typename P::constant_iterators>>
       : P::constant_iterators {};
-
-  // Fallback slot equality functor using `Policy::apply` for custom layouts.
-  struct EqKeyNonTypeErased {
-    using SlotKeyType = const key_type;
-
-    template <class Eq, class SearchKey>
-    bool operator()(const Eq& eq, const void* slot,
-                    const SearchKey& key) const {
-      return Policy::apply(
-          EqualElement<SearchKey, Eq>{key, eq},
-          hash_policy_traits::element(
-              static_cast<slot_type*>(const_cast<void*>(slot))));
-    }
-  };
-
-  template <class P = Policy, class = void>
-  struct SlotEqImpl {
-    using type = EqKeyNonTypeErased;
-  };
-
-  template <class P>
-  struct SlotEqImpl<P, std::void_t<typename P::SlotEq>> {
-    using type = typename P::SlotEq;
-  };
 
  public:
   // The actual object stored in the hash table.
@@ -106,18 +79,14 @@ template <class Policy, class = void>
   using init_type = typename Policy::init_type;
 
   using reference = decltype(Policy::element(std::declval<slot_type*>()));
-  using value_type = std::remove_reference_t<reference>;
+  using pointer = typename std::remove_reference<reference>::type*;
+  using value_type = typename std::remove_reference<reference>::type;
 
   // Policies can set this variable to tell raw_hash_set that all iterators
   // should be constant, even `iterator`. This is useful for set-like
   // containers.
   // Defaults to false if not provided by the policy.
   using constant_iterators = ConstantIteratorsImpl<>;
-
-  // Functor type for comparing keys with a slot.
-  // TODO(b/575748507): Require `SlotEq` for all policies and remove
-  // `SlotEqImpl` and `EqKeyNonTypeErased`.
-  using SlotEq = typename SlotEqImpl<>::type;
 
   // Returns the amount of memory owned by `slot`, exclusive of `sizeof(*slot)`.
   //
@@ -178,24 +147,6 @@ template <class Policy, class = void>
   template <class T, class P = Policy>
   static auto value(T* elem) -> decltype(P::value(elem)) {
     return P::value(elem);
-  }
-
-  template <class Hash, bool kIsAbsl, size_t kSeedShift>
-  static constexpr HashSlotFn get_hash_slot_fn() {
-    // A null policy function selects the non-type-erased fallback.
-    return HashSlotFnSelector<
-        Policy::template get_hash_slot_fn<Hash, kIsAbsl, kSeedShift>(),
-        &hash_slot_fn_non_type_erased<Hash, kIsAbsl, kSeedShift>>::kValue;
-  }
-
- private:
-  template <class Hash, bool kIsAbsl, size_t kSeedShift>
-  static size_t hash_slot_fn_non_type_erased(const void* hash_fn, void* slot,
-                                             size_t seed) {
-    return Policy::apply(
-        HashElement<Hash, kIsAbsl, kSeedShift>{
-            *static_cast<const Hash*>(hash_fn), seed},
-        Policy::element(static_cast<slot_type*>(slot)));
   }
 };
 

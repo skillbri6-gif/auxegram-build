@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load(
     "//absl:copts/configure_copts.bzl",
     "ABSL_DEFAULT_COPTS",
@@ -52,21 +49,18 @@ cc_library(
 cc_test(
     name = "sample_recorder_test",
     srcs = ["internal/sample_recorder_test.cc"],
-    copts = ABSL_TEST_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
     tags = [
         "no_test_wasm",
     ],
     deps = [
         ":sample_recorder",
-        "//absl/base:config",
         "//absl/base:core_headers",
-        "//absl/random",
         "//absl/synchronization",
         "//absl/synchronization:thread_pool",
         "//absl/time",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -74,7 +68,6 @@ cc_library(
     name = "exponential_biased",
     srcs = ["internal/exponential_biased.cc"],
     hdrs = ["internal/exponential_biased.h"],
-    copts = ABSL_DEFAULT_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
     visibility = [
         "//absl:__subpackages__",
@@ -94,11 +87,9 @@ cc_test(
     visibility = ["//visibility:private"],
     deps = [
         ":exponential_biased",
-        "//absl/base:config",
-        "//absl/base:core_headers",
         "//absl/strings",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -109,11 +100,11 @@ cc_library(
     copts = ABSL_DEFAULT_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
     visibility = [
+        # TODO(b/304670045): remove after periodic_sampler moves to //spanner/common.
         "//absl:__subpackages__",
     ],
     deps = [
         ":exponential_biased",
-        "//absl/base:config",
         "//absl/base:core_headers",
     ],
 )
@@ -127,16 +118,15 @@ cc_test(
     visibility = ["//visibility:private"],
     deps = [
         ":periodic_sampler",
-        "//absl/base:config",
         "//absl/base:core_headers",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
 cc_binary(
     name = "periodic_sampler_benchmark",
-    testonly = True,
+    testonly = 1,
     srcs = ["internal/periodic_sampler_benchmark.cc"],
     copts = ABSL_TEST_COPTS,
     linkopts = ABSL_DEFAULT_LINKOPTS,
@@ -144,53 +134,7 @@ cc_binary(
     visibility = ["//visibility:private"],
     deps = [
         ":periodic_sampler",
-        "//absl/base:config",
         "//absl/base:core_headers",
-        "@google_benchmark//:benchmark_main",
-    ],
-)
-
-cc_library(
-    name = "profile_builder",
-    srcs = ["internal/profile_builder.cc"],
-    hdrs = ["internal/profile_builder.h"],
-    copts = ABSL_DEFAULT_COPTS,
-    linkopts = ABSL_DEFAULT_LINKOPTS,
-    visibility = [
-        "//absl:__subpackages__",
-    ],
-    deps = [
-        "//absl/base",
-        "//absl/base:config",
-        "//absl/base:raw_logging_internal",
-        "//absl/container:btree",
-        "//absl/container:flat_hash_map",
-        "//absl/container:hash_container_defaults",
-        "//absl/strings",
-        "//absl/strings:str_format",
-        "//absl/strings:string_view",
-        "//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "hashtable",
-    srcs = ["hashtable.cc"],
-    hdrs = ["hashtable.h"],
-    copts = ABSL_DEFAULT_COPTS,
-    linkopts = ABSL_DEFAULT_LINKOPTS,
-    visibility = [
-        "//absl:__subpackages__",
-    ],
-    deps = [
-        ":profile_builder",
-        "//absl/base",
-        "//absl/base:config",
-        "//absl/container:hashtablez_sampler",
-        "//absl/status:statusor",
-        "//absl/strings",
-        "//absl/strings:string_view",
-        "//absl/time",
-        "//absl/types:span",
+        "@com_github_google_benchmark//:benchmark_main",
     ],
 )

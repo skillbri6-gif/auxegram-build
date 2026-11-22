@@ -24,21 +24,42 @@
 #ifndef ABSL_RANDOM_BIT_GEN_REF_H_
 #define ABSL_RANDOM_BIT_GEN_REF_H_
 
-#include <cstdint>
 #include <limits>
-#include <memory>
 #include <type_traits>
+#include <utility>
 
-#include "absl/base/attributes.h"
-#include "absl/base/config.h"
-#include "absl/base/fast_type_id.h"
+#include "absl/base/internal/fast_type_id.h"
+#include "absl/base/macros.h"
 #include "absl/meta/type_traits.h"
+#include "absl/random/internal/distribution_caller.h"
 #include "absl/random/internal/fast_uniform_bits.h"
-#include "absl/random/internal/traits.h"
-#include "absl/random/mocking_access.h"
 
 namespace absl {
 ABSL_NAMESPACE_BEGIN
+namespace random_internal {
+
+template <typename URBG, typename = void, typename = void, typename = void>
+struct is_urbg : std::false_type {};
+
+template <typename URBG>
+struct is_urbg<
+    URBG,
+    absl::enable_if_t<std::is_same<
+        typename URBG::result_type,
+        typename std::decay<decltype((URBG::min)())>::type>::value>,
+    absl::enable_if_t<std::is_same<
+        typename URBG::result_type,
+        typename std::decay<decltype((URBG::max)())>::type>::value>,
+    absl::enable_if_t<std::is_same<
+        typename URBG::result_type,
+        typename std::decay<decltype(std::declval<URBG>()())>::type>::value>>
+    : std::true_type {};
+
+template <typename>
+struct DistributionCaller;
+class MockHelpers;
+
+}  // namespace random_internal
 
 // -----------------------------------------------------------------------------
 // absl::BitGenRef
@@ -64,30 +85,24 @@ ABSL_NAMESPACE_BEGIN
 //    }
 //
 class BitGenRef {
+  // SFINAE to detect whether the URBG type includes a member matching
+  // bool InvokeMock(base_internal::FastTypeIdType, void*, void*).
+  //
+  // These live inside BitGenRef so that they have friend access
+  // to MockingBitGen. (see similar methods in DistributionCaller).
   template <template <class...> class Trait, class AlwaysVoid, class... Args>
   struct detector : std::false_type {};
   template <template <class...> class Trait, class... Args>
-  struct detector<Trait, std::void_t<Trait<Args...>>, Args...>
+  struct detector<Trait, absl::void_t<Trait<Args...>>, Args...>
       : std::true_type {};
 
-  template <typename T>
-  using has_conversion_operator_t =
-      decltype(std::declval<T>().operator BitGenRef());
+  template <class T>
+  using invoke_mock_t = decltype(std::declval<T*>()->InvokeMock(
+      std::declval<base_internal::FastTypeIdType>(), std::declval<void*>(),
+      std::declval<void*>()));
 
   template <typename T>
-  using HasConversionOperator = detector<has_conversion_operator_t, void, T>;
-
-  // True when BitGenRef binds directly to a URBG, rather than copying
-  // (BitGenRef and derived types) or converting (types which provide
-  // `operator BitGenRef()`).
-  //
-  // The conversion operator detection allows for ref-qualification, so that
-  // types may prevent binding to temporaries via `operator BitGenRef() &`.
-  template <typename URBG>
-  static constexpr bool kBindsDirectly =
-      !std::is_same_v<URBG, BitGenRef> && !std::is_base_of_v<BitGenRef, URBG> &&
-      !HasConversionOperator<URBG&>::value &&
-      random_internal::is_urbg<URBG>::value;
+  using HasInvokeMock = typename detector<invoke_mock_t, void, T>::type;
 
  public:
   BitGenRef(const BitGenRef&) = default;
@@ -95,22 +110,23 @@ class BitGenRef {
   BitGenRef& operator=(const BitGenRef&) = default;
   BitGenRef& operator=(BitGenRef&&) = default;
 
-  template <typename URBGRef, typename URBG = absl::remove_cvref_t<URBGRef>,
-            typename std::enable_if_t<
-                kBindsDirectly<URBG> &&
-                !std::is_const_v<std::remove_reference_t<URBGRef>>>* = nullptr>
-  BitGenRef(URBGRef&& gen ABSL_ATTRIBUTE_LIFETIME_BOUND)  // NOLINT
-      : t_erased_gen_ptr_(std::addressof(gen)),
-        mock_call_(MockCallFn<URBG>()),
+  template <typename URBG, typename absl::enable_if_t<
+                               (!std::is_same<URBG, BitGenRef>::value &&
+                                random_internal::is_urbg<URBG>::value &&
+                                !HasInvokeMock<URBG>::value)>* = nullptr>
+  BitGenRef(URBG& gen)  // NOLINT
+      : t_erased_gen_ptr_(reinterpret_cast<uintptr_t>(&gen)),
+        mock_call_(NotAMock),
         generate_impl_fn_(ImplFn<URBG>) {}
 
-  // Generating a variate mutates the generator, so a BitGenRef may not bind to
-  // a const generator.
-  template <typename URBGRef, typename URBG = absl::remove_cvref_t<URBGRef>,
-            typename std::enable_if_t<
-                kBindsDirectly<URBG> &&
-                std::is_const_v<std::remove_reference_t<URBGRef>>>* = nullptr>
-  BitGenRef(URBGRef&& gen) = delete;  // NOLINT
+  template <typename URBG,
+            typename absl::enable_if_t<(!std::is_same<URBG, BitGenRef>::value &&
+                                        random_internal::is_urbg<URBG>::value &&
+                                        HasInvokeMock<URBG>::value)>* = nullptr>
+  BitGenRef(URBG& gen)  // NOLINT
+      : t_erased_gen_ptr_(reinterpret_cast<uintptr_t>(&gen)),
+        mock_call_(&MockCall<URBG>),
+        generate_impl_fn_(ImplFn<URBG>) {}
 
   using result_type = uint64_t;
 
@@ -125,45 +141,42 @@ class BitGenRef {
   result_type operator()() { return generate_impl_fn_(t_erased_gen_ptr_); }
 
  private:
-  using impl_fn = result_type (*)(void*);
-  using mock_call_fn = bool (*)(void*, FastTypeIdType, void*, void*);
+  using impl_fn = result_type (*)(uintptr_t);
+  using mock_call_fn = bool (*)(uintptr_t, base_internal::FastTypeIdType, void*,
+                                void*);
 
   template <typename URBG>
-  static result_type ImplFn(void* ptr) {
+  static result_type ImplFn(uintptr_t ptr) {
     // Ensure that the return values from operator() fill the entire
     // range promised by result_type, min() and max().
     absl::random_internal::FastUniformBits<result_type> fast_uniform_bits;
-    return fast_uniform_bits(*static_cast<URBG*>(ptr));
+    return fast_uniform_bits(*reinterpret_cast<URBG*>(ptr));
   }
 
   // Get a type-erased InvokeMock pointer.
   template <typename URBG>
-  static bool MockCall(void* gen_ptr, FastTypeIdType key_id, void* args_tuple,
-                       void* result) {
-    return RandomMockingAccess::InvokeMock(static_cast<URBG*>(gen_ptr), key_id,
-                                           args_tuple, result);
+  static bool MockCall(uintptr_t gen_ptr, base_internal::FastTypeIdType type,
+                       void* result, void* arg_tuple) {
+    return reinterpret_cast<URBG*>(gen_ptr)->InvokeMock(type, result,
+                                                        arg_tuple);
+  }
+  static bool NotAMock(uintptr_t, base_internal::FastTypeIdType, void*, void*) {
+    return false;
   }
 
-  // Returns MockCall<URBG> if URBG supports mocking, otherwise nullptr.
-  template <typename URBG>
-  static constexpr mock_call_fn MockCallFn() {
-    if constexpr (RandomMockingAccess::HasInvokeMock<URBG>::value) {
-      return MockCall<URBG>;
-    } else {
-      return nullptr;
-    }
+  inline bool InvokeMock(base_internal::FastTypeIdType type, void* args_tuple,
+                         void* result) {
+    if (mock_call_ == NotAMock) return false;  // avoids an indirect call.
+    return mock_call_(t_erased_gen_ptr_, type, args_tuple, result);
   }
 
-  bool InvokeMock(FastTypeIdType key_id, void* args_tuple, void* result) {
-    if (mock_call_ == nullptr) return false;  // avoids an indirect call.
-    return mock_call_(t_erased_gen_ptr_, key_id, args_tuple, result);
-  }
-
-  void* t_erased_gen_ptr_;
+  uintptr_t t_erased_gen_ptr_;
   mock_call_fn mock_call_;
   impl_fn generate_impl_fn_;
 
-  friend class ::absl::RandomMockingAccess;  // for InvokeMock
+  template <typename>
+  friend struct ::absl::random_internal::DistributionCaller;  // for InvokeMock
+  friend class ::absl::random_internal::MockHelpers;          // for InvokeMock
 };
 
 ABSL_NAMESPACE_END

@@ -39,8 +39,7 @@ TEST(StrErrorTest, ValidErrorCode) {
 TEST(StrErrorTest, InvalidErrorCode) {
   errno = ERANGE;
   EXPECT_THAT(absl::base_internal::StrError(-1),
-              AnyOf(Eq("No error information"), Eq("Unknown error -1"),
-                    Eq("Unknown error")));
+              AnyOf(Eq("No error information"), Eq("Unknown error -1")));
   EXPECT_THAT(errno, Eq(ERANGE));
 }
 

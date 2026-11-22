@@ -22,25 +22,16 @@
 
 #include <array>
 #include <atomic>
-#include <cstring>
-#include <limits>
 #include <memory>
+#include <new>
 #include <string>
 #include <typeinfo>
-#include <utility>
-#include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/base/call_once.h"
 #include "absl/base/casts.h"
 #include "absl/base/config.h"
-#include "absl/base/const_init.h"
 #include "absl/base/dynamic_annotations.h"
-#include "absl/base/fast_type_id.h"
-#include "absl/base/no_destructor.h"
 #include "absl/base/optimization.h"
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/flags/config.h"
 #include "absl/flags/internal/commandlineflag.h"
 #include "absl/flags/usage_config.h"
@@ -53,9 +44,10 @@ namespace absl {
 ABSL_NAMESPACE_BEGIN
 namespace flags_internal {
 
-// The help message indicating that the commandline flag has been stripped. It
-// will not show up when doing "-help" and its variants. The flag is stripped
-// if ABSL_FLAGS_STRIP_HELP is set to 1 before including absl/flags/flag.h
+// The help message indicating that the commandline flag has been
+// 'stripped'. It will not show up when doing "-help" and its
+// variants. The flag is stripped if ABSL_FLAGS_STRIP_HELP is set to 1
+// before including absl/flags/flag.h
 const char kStrippedFlagHelp[] = "\001\002\003\004 (unknown) \004\003\002\001";
 
 namespace {
@@ -63,7 +55,7 @@ namespace {
 // Currently we only validate flag values for user-defined flag types.
 bool ShouldValidateFlagValue(FlagFastTypeId flag_type_id) {
 #define DONT_VALIDATE(T, _) \
-  if (flag_type_id == absl::FastTypeId<T>()) return false;
+  if (flag_type_id == base_internal::FastTypeId<T>()) return false;
   ABSL_FLAGS_INTERNAL_SUPPORTED_TYPES(DONT_VALIDATE)
 #undef DONT_VALIDATE
 
@@ -76,8 +68,8 @@ bool ShouldValidateFlagValue(FlagFastTypeId flag_type_id) {
 // need to acquire these locks themselves.
 class MutexRelock {
  public:
-  explicit MutexRelock(absl::Mutex& mu) : mu_(mu) { mu_.unlock(); }
-  ~MutexRelock() { mu_.lock(); }
+  explicit MutexRelock(absl::Mutex& mu) : mu_(mu) { mu_.Unlock(); }
+  ~MutexRelock() { mu_.Lock(); }
 
   MutexRelock(const MutexRelock&) = delete;
   MutexRelock& operator=(const MutexRelock&) = delete;
@@ -86,122 +78,7 @@ class MutexRelock {
   absl::Mutex& mu_;
 };
 
-// This is a freelist of leaked flag values and guard for its access.
-// When we can't guarantee it is safe to reuse the memory for flag values,
-// we move the memory to the freelist where it lives indefinitely, so it can
-// still be safely accessed. This also prevents leak checkers from complaining
-// about the leaked memory that can no longer be accessed through any pointer.
-absl::Mutex& FreelistMutex() {
-  static absl::NoDestructor<absl::Mutex> mutex;
-  return *mutex;
-}
-ABSL_CONST_INIT std::vector<void*>* s_freelist ABSL_GUARDED_BY(FreelistMutex())
-    ABSL_PT_GUARDED_BY(FreelistMutex()) = nullptr;
-
-void AddToFreelist(void* p) {
-  absl::MutexLock l(FreelistMutex());
-  if (!s_freelist) {
-    s_freelist = new std::vector<void*>;
-  }
-  s_freelist->push_back(p);
-}
-
-// Uncommon per-flag data (callbacks and dynamic default overrides) is stored in
-// side tables to keep FlagImpl small across the many flags in a binary.
-// Logically, each map entry is an optional field of FlagImpl.
-template <typename K, typename V>
-class ThreadSafeMap {
- public:
-  V Get(const K& key) {
-    absl::MutexLock l(mutex_);
-    auto it = map_.find(key);
-    return it != map_.end() ? it->second : V{};
-  }
-
-  V Set(const K& key, V new_val) {
-    absl::MutexLock l(mutex_);
-    return std::exchange(map_[key], new_val);
-  }
-
-  template <typename Factory>
-  V GetOrCreate(const K& key, Factory factory) {
-    absl::MutexLock l(mutex_);
-    V& val = map_[key];
-    if (val == V{}) {
-      val = factory();
-    }
-    return val;
-  }
-
-  void Increment(const K& key) {
-    absl::MutexLock l(mutex_);
-    ++map_[key];
-  }
-
- private:
-  absl::Mutex mutex_;
-  absl::flat_hash_map<K, V> map_ ABSL_GUARDED_BY(mutex_);
-};
-
-FlagCallback* GetOrCreateCallback(const FlagImpl* flag) {
-  static absl::NoDestructor<ThreadSafeMap<const FlagImpl*, FlagCallback*>>
-      callbacks;
-  return callbacks->GetOrCreate(flag, [] { return new FlagCallback; });
-}
-
-ThreadSafeMap<const FlagImpl*, void*>& DynamicDefaults() {
-  static absl::NoDestructor<ThreadSafeMap<const FlagImpl*, void*>>
-      dynamic_defaults;
-  return *dynamic_defaults;
-}
-
-void* GetDynamicDefault(const FlagImpl* flag) {
-  return DynamicDefaults().Get(flag);
-}
-
-void* SetDynamicDefault(const FlagImpl* flag, void* new_val) {
-  return DynamicDefaults().Set(flag, new_val);
-}
-
-ThreadSafeMap<const FlagImpl*, int64_t>& OverflowModCounts() {
-  static absl::NoDestructor<ThreadSafeMap<const FlagImpl*, int64_t>>
-      overflow_mod_counts;
-  return *overflow_mod_counts;
-}
-
-int64_t GetOverflowModCount(const FlagImpl* flag) {
-  return OverflowModCounts().Get(flag);
-}
-
-void IncrementOverflowModCount(const FlagImpl* flag) {
-  OverflowModCounts().Increment(flag);
-}
-
-struct FilenameTable {
-  absl::Mutex mutex;
-  std::vector<const char*> files ABSL_GUARDED_BY(mutex);
-};
-
-FilenameTable& GlobalFilenames() {
-  static absl::NoDestructor<FilenameTable> filenames;
-  return *filenames;
-}
-
-const char* GetFilenameById(uint16_t id) {
-  if (id == 0) return "";
-  FilenameTable& table = GlobalFilenames();
-  absl::MutexLock l(table.mutex);
-  return table.files[id - 1];
-}
-
 }  // namespace
-
-///////////////////////////////////////////////////////////////////////////////
-
-uint64_t NumLeakedFlagValues() {
-  absl::MutexLock l(FreelistMutex());
-  return s_freelist == nullptr ? 0u : s_freelist->size();
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Persistent state of the flag data.
@@ -219,16 +96,8 @@ class FlagState : public flags_internal::FlagStateInterface {
         on_command_line_(on_command_line),
         counter_(counter) {}
 
-  FlagState(FlagImpl& flag_impl, FlagDefaultSrc default_value)
-      : flag_impl_(flag_impl),
-        value_(default_value),
-        modified_(false),
-        on_command_line_(false),
-        counter_(-1) {}
-
   ~FlagState() override {
-    if (counter_ < 0) return;
-    if (flag_impl_.ValueStorageKind() != FlagValueStorageKind::kHeapAllocated &&
+    if (flag_impl_.ValueStorageKind() != FlagValueStorageKind::kAlignedBuffer &&
         flag_impl_.ValueStorageKind() != FlagValueStorageKind::kSequenceLocked)
       return;
     flags_internal::Delete(flag_impl_.op_, value_.heap_allocated);
@@ -238,8 +107,8 @@ class FlagState : public flags_internal::FlagStateInterface {
   friend class FlagImpl;
 
   // Restores the flag to the saved state.
-  void Restore() && override {
-    if (!std::move(flag_impl_).RestoreState(*this)) return;
+  void Restore() const override {
+    if (!flag_impl_.RestoreState(*this)) return;
 
     ABSL_INTERNAL_LOG(INFO,
                       absl::StrCat("Restore saved value of ", flag_impl_.Name(),
@@ -251,11 +120,9 @@ class FlagState : public flags_internal::FlagStateInterface {
   union SavedValue {
     explicit SavedValue(void* v) : heap_allocated(v) {}
     explicit SavedValue(int64_t v) : one_word(v) {}
-    explicit SavedValue(FlagDefaultSrc v) : default_value(v) {}
 
     void* heap_allocated;
     int64_t one_word;
-    FlagDefaultSrc default_value;
   } value_;
   bool modified_;
   bool on_command_line_;
@@ -273,64 +140,10 @@ void DynValueDeleter::operator()(void* ptr) const {
   Delete(op, ptr);
 }
 
-MaskedPointer::MaskedPointer(ptr_t rhs, bool is_candidate) : ptr_(rhs) {
-  if (is_candidate) {
-    ApplyMask(kUnprotectedReadCandidate);
-  }
-}
-
-bool MaskedPointer::IsUnprotectedReadCandidate() const {
-  return CheckMask(kUnprotectedReadCandidate);
-}
-
-bool MaskedPointer::HasBeenRead() const { return CheckMask(kHasBeenRead); }
-
-void MaskedPointer::Set(FlagOpFn op, const void* src, bool is_candidate) {
-  flags_internal::Copy(op, src, Ptr());
-  if (is_candidate) {
-    ApplyMask(kUnprotectedReadCandidate);
-  }
-}
-void MaskedPointer::MarkAsRead() { ApplyMask(kHasBeenRead); }
-
-void MaskedPointer::ApplyMask(mask_t mask) {
-  ptr_ = reinterpret_cast<ptr_t>(reinterpret_cast<mask_t>(ptr_) | mask);
-}
-bool MaskedPointer::CheckMask(mask_t mask) const {
-  return (reinterpret_cast<mask_t>(ptr_) & mask) != 0;
-}
-
-void FlagImpl::SetFilename(const char* filename) {
-  // Keep the first registration's filename so FlagRegistry::RegisterFlag can
-  // report both files when dynamic symbol interposition merges duplicate flag
-  // definitions across shared libraries.
-  if (file_id_ != 0 || filename == nullptr) return;
-  FilenameTable& table = GlobalFilenames();
-  absl::MutexLock l(table.mutex);
-  // Flags are typically defined in .cc files whose dynamic initializers run
-  // consecutively per translation unit, and compilers that pool string
-  // literals (such as Clang/GCC .rodata.str1.1 or MSVC /GF) share one
-  // __FILE__ literal address per file. Checking pointer equality against the
-  // last entry deduplicates that common case in O(1); if literals are not
-  // pooled or a translation unit spans multiple files, storing extra entries
-  // only uses an additional table slot without affecting correctness.
-  if (!table.files.empty() && table.files.back() == filename) {
-    file_id_ = static_cast<uint16_t>(table.files.size());
-    return;
-  }
-  if (ABSL_PREDICT_FALSE(table.files.size() >=
-                         std::numeric_limits<uint16_t>::max())) {
-    ABSL_INTERNAL_LOG(FATAL, "Too many flag filenames");
-  }
-  table.files.push_back(filename);
-  file_id_ = static_cast<uint16_t>(table.files.size());
-}
-
 void FlagImpl::Init() {
   new (&data_guard_) absl::Mutex;
 
-  FlagDefaultKind def_kind =
-      mu_state_.load(std::memory_order_relaxed).DefaultKind();
+  auto def_kind = static_cast<FlagDefaultKind>(def_kind_);
 
   switch (ValueStorageKind()) {
     case FlagValueStorageKind::kValueAndInitBit:
@@ -359,29 +172,24 @@ void FlagImpl::Init() {
       // during initialization.
       assert(def_kind == FlagDefaultKind::kGenFunc);
       (*default_value_.gen_func)(AtomicBufferValue());
-      SeqLock().MarkInitialized();
       break;
     }
-    case FlagValueStorageKind::kHeapAllocated:
+    case FlagValueStorageKind::kAlignedBuffer:
       // For this storage kind the default_value_ always points to gen_func
       // during initialization.
       assert(def_kind == FlagDefaultKind::kGenFunc);
-      // Flag value initially points to the internal buffer.
-      MaskedPointer ptr_value = PtrStorage().load(std::memory_order_acquire);
-      (*default_value_.gen_func)(ptr_value.Ptr());
-      // Default value is a candidate for an unprotected read.
-      PtrStorage().store(MaskedPointer(ptr_value.Ptr(), true),
-                         std::memory_order_release);
+      (*default_value_.gen_func)(AlignedBufferValue());
       break;
   }
+  seq_lock_.MarkInitialized();
 }
 
-absl::Mutex& FlagImpl::DataGuard() const {
+absl::Mutex* FlagImpl::DataGuard() const {
   absl::call_once(const_cast<FlagImpl*>(this)->init_control_, &FlagImpl::Init,
                   const_cast<FlagImpl*>(this));
 
   // data_guard_ is initialized inside Init.
-  return *reinterpret_cast<absl::Mutex*>(&data_guard_);
+  return reinterpret_cast<absl::Mutex*>(&data_guard_);
 }
 
 void FlagImpl::AssertValidType(FlagFastTypeId rhs_type_id,
@@ -411,9 +219,9 @@ void FlagImpl::AssertValidType(FlagFastTypeId rhs_type_id,
 
 std::unique_ptr<void, DynValueDeleter> FlagImpl::MakeInitValue() const {
   void* res = nullptr;
-  switch (mu_state_.load(std::memory_order_relaxed).DefaultKind()) {
+  switch (DefaultKind()) {
     case FlagDefaultKind::kDynamicValue:
-      res = flags_internal::Clone(op_, GetDynamicDefault(this));
+      res = flags_internal::Clone(op_, default_value_.dynamic_value);
       break;
     case FlagDefaultKind::kGenFunc:
       res = flags_internal::Alloc(op_);
@@ -426,18 +234,7 @@ std::unique_ptr<void, DynValueDeleter> FlagImpl::MakeInitValue() const {
   return {res, DynValueDeleter{op_}};
 }
 
-void FlagImpl::RecordMutation() {
-  MuState s = mu_state_.load(std::memory_order_relaxed);
-  if (s.mod_count < kMaxInlineModCount) {
-    ++s.mod_count;
-  } else {
-    IncrementOverflowModCount(this);
-  }
-  s.modified = true;
-  mu_state_.store(s, std::memory_order_relaxed);
-}
-
-void FlagImpl::StoreValue(const void* src, ValueSource source) {
+void FlagImpl::StoreValue(const void* src) {
   switch (ValueStorageKind()) {
     case FlagValueStorageKind::kValueAndInitBit:
     case FlagValueStorageKind::kOneWordAtomic: {
@@ -445,51 +242,26 @@ void FlagImpl::StoreValue(const void* src, ValueSource source) {
       int64_t one_word_val = OneWordValue().load(std::memory_order_acquire);
       std::memcpy(&one_word_val, src, Sizeof(op_));
       OneWordValue().store(one_word_val, std::memory_order_release);
+      seq_lock_.IncrementModificationCount();
       break;
     }
     case FlagValueStorageKind::kSequenceLocked: {
-      SeqLock().Write(AtomicBufferValue(), src, Sizeof(op_));
+      seq_lock_.Write(AtomicBufferValue(), src, Sizeof(op_));
       break;
     }
-    case FlagValueStorageKind::kHeapAllocated:
-      MaskedPointer ptr_value = PtrStorage().load(std::memory_order_acquire);
-
-      if (ptr_value.IsUnprotectedReadCandidate() && ptr_value.HasBeenRead()) {
-        // If current value is a candidate for an unprotected read and if it was
-        // already read at least once, follow up reads (if any) are done without
-        // mutex protection. We can't guarantee it is safe to reuse this memory
-        // since it may have been accessed by another thread concurrently, so
-        // instead we move the memory to a freelist so it can still be safely
-        // accessed, and allocate a new one for the new value.
-        AddToFreelist(ptr_value.Ptr());
-        ptr_value = MaskedPointer(Clone(op_, src), source == kCommandLine);
-      } else {
-        // Current value either was set programmatically or was never read.
-        // We can reuse the memory since all accesses to this value (if any)
-        // were protected by mutex. That said, if a new value comes from command
-        // line it now becomes a candidate for an unprotected read.
-        ptr_value.Set(op_, src, source == kCommandLine);
-      }
-
-      PtrStorage().store(ptr_value, std::memory_order_release);
+    case FlagValueStorageKind::kAlignedBuffer:
+      Copy(op_, src, AlignedBufferValue());
+      seq_lock_.IncrementModificationCount();
       break;
   }
-  RecordMutation();
+  modified_ = true;
   InvokeCallback();
 }
 
 absl::string_view FlagImpl::Name() const { return name_; }
 
-absl::string_view FlagImpl::TypeName() const {
-  if (ABSL_PREDICT_TRUE(type_id_ != kCustomFlagTypeId)) {
-    return kCommonFlagTypeNames[type_id_];
-  }
-  return name_ + std::strlen(name_) + 1;
-}
-
 std::string FlagImpl::Filename() const {
-  return flags_internal::GetUsageConfig().normalize_filename(
-      GetFilenameById(file_id_));
+  return flags_internal::GetUsageConfig().normalize_filename(filename_);
 }
 
 std::string FlagImpl::Help() const {
@@ -502,15 +274,12 @@ FlagFastTypeId FlagImpl::TypeId() const {
 }
 
 int64_t FlagImpl::ModificationCount() const {
-  const uint8_t mod_count = mu_state_.load(std::memory_order_relaxed).mod_count;
-  if (ABSL_PREDICT_TRUE(mod_count < kMaxInlineModCount)) {
-    return mod_count;
-  }
-  return kMaxInlineModCount + GetOverflowModCount(this);
+  return seq_lock_.ModificationCount();
 }
 
 bool FlagImpl::IsSpecifiedOnCommandLine() const {
-  return mu_state_.load(std::memory_order_relaxed).on_command_line;
+  absl::MutexLock l(DataGuard());
+  return on_command_line_;
 }
 
 std::string FlagImpl::DefaultValue() const {
@@ -521,7 +290,7 @@ std::string FlagImpl::DefaultValue() const {
 }
 
 std::string FlagImpl::CurrentValue() const {
-  auto& guard = DataGuard();  // Make sure flag initialized
+  auto* guard = DataGuard();  // Make sure flag initialized
   switch (ValueStorageKind()) {
     case FlagValueStorageKind::kValueAndInitBit:
     case FlagValueStorageKind::kOneWordAtomic: {
@@ -536,10 +305,9 @@ std::string FlagImpl::CurrentValue() const {
       ReadSequenceLockedData(cloned.get());
       return flags_internal::Unparse(op_, cloned.get());
     }
-    case FlagValueStorageKind::kHeapAllocated: {
+    case FlagValueStorageKind::kAlignedBuffer: {
       absl::MutexLock l(guard);
-      return flags_internal::Unparse(
-          op_, PtrStorage().load(std::memory_order_acquire).Ptr());
+      return flags_internal::Unparse(op_, AlignedBufferValue());
     }
   }
 
@@ -549,22 +317,20 @@ std::string FlagImpl::CurrentValue() const {
 void FlagImpl::SetCallback(const FlagCallbackFunc mutation_callback) {
   absl::MutexLock l(DataGuard());
 
-  FlagCallback* cb = GetOrCreateCallback(this);
-  cb->func = mutation_callback;
-  MuState s = mu_state_.load(std::memory_order_relaxed);
-  s.has_callback = true;
-  mu_state_.store(s, std::memory_order_relaxed);
+  if (callback_ == nullptr) {
+    callback_ = new FlagCallback;
+  }
+  callback_->func = mutation_callback;
 
   InvokeCallback();
 }
 
 void FlagImpl::InvokeCallback() const {
-  if (!mu_state_.load(std::memory_order_relaxed).has_callback) return;
+  if (!callback_) return;
 
-  FlagCallback* cb_entry = GetOrCreateCallback(this);
   // Make a copy of the C-style function pointer that we are about to invoke
   // before we release the lock guarding it.
-  FlagCallbackFunc cb = cb_entry->func;
+  FlagCallbackFunc cb = callback_->func;
 
   // If the flag has a mutation callback this function invokes it. While the
   // callback is being invoked the primary flag's mutex is unlocked and it is
@@ -577,50 +343,20 @@ void FlagImpl::InvokeCallback() const {
   // and it also can be different by the time the callback invocation is
   // completed. Requires that *primary_lock be held in exclusive mode; it may be
   // released and reacquired by the implementation.
-  MutexRelock relock(DataGuard());
-  absl::MutexLock lock(cb_entry->guard);
+  MutexRelock relock(*DataGuard());
+  absl::MutexLock lock(&callback_->guard);
   cb();
 }
 
-// Returns true if an unmodified absl::Flag can skip lazy initialization and
-// state allocation in `SaveState()`, and instead reconstructs from the
-// provided default value if modified before restoration.
-bool FlagImpl::CanSkipInitOnSave() const {
-  const MuState state = mu_state_.load(std::memory_order_relaxed);
-  if (state.mod_count != 0) return false;
-  const FlagDefaultKind def_kind = state.DefaultKind();
-  switch (ValueStorageKind()) {
-    case FlagValueStorageKind::kValueAndInitBit:
-    case FlagValueStorageKind::kOneWordAtomic:
-      // Only `kOneWord` defaults are inlinable compile-time constants; other
-      // kinds may have dynamic defaults or side effects.
-      return def_kind == FlagDefaultKind::kOneWord;
-    case FlagValueStorageKind::kSequenceLocked:
-      // Always uses a default-generator function when unmodified.
-      return def_kind == FlagDefaultKind::kGenFunc;
-    case FlagValueStorageKind::kHeapAllocated:
-      // Built-in types have side-effect-free defaults; user-defined types may
-      // have custom construction or validation side effects.
-      return def_kind == FlagDefaultKind::kGenFunc &&
-             !ShouldValidateFlagValue(flags_internal::FastTypeId(op_));
-  }
-  return false;
-}
-
 std::unique_ptr<FlagStateInterface> FlagImpl::SaveState() {
-  if (ABSL_PREDICT_TRUE(CanSkipInitOnSave())) {
-    return std::make_unique<FlagState>(*this, default_value_);
-  }
-
   absl::MutexLock l(DataGuard());
 
-  const MuState state = mu_state_.load(std::memory_order_relaxed);
-  bool modified = state.modified;
-  bool on_command_line = state.on_command_line;
+  bool modified = modified_;
+  bool on_command_line = on_command_line_;
   switch (ValueStorageKind()) {
     case FlagValueStorageKind::kValueAndInitBit:
     case FlagValueStorageKind::kOneWordAtomic: {
-      return std::make_unique<FlagState>(
+      return absl::make_unique<FlagState>(
           *this, OneWordValue().load(std::memory_order_acquire), modified,
           on_command_line, ModificationCount());
     }
@@ -628,28 +364,22 @@ std::unique_ptr<FlagStateInterface> FlagImpl::SaveState() {
       void* cloned = flags_internal::Alloc(op_);
       // Read is guaranteed to be successful because we hold the lock.
       bool success =
-          SeqLock().TryRead(cloned, AtomicBufferValue(), Sizeof(op_));
+          seq_lock_.TryRead(cloned, AtomicBufferValue(), Sizeof(op_));
       assert(success);
       static_cast<void>(success);
-      return std::make_unique<FlagState>(*this, cloned, modified,
-                                         on_command_line, ModificationCount());
+      return absl::make_unique<FlagState>(*this, cloned, modified,
+                                          on_command_line, ModificationCount());
     }
-    case FlagValueStorageKind::kHeapAllocated: {
-      return std::make_unique<FlagState>(
-          *this,
-          flags_internal::Clone(
-              op_, PtrStorage().load(std::memory_order_acquire).Ptr()),
-          modified, on_command_line, ModificationCount());
+    case FlagValueStorageKind::kAlignedBuffer: {
+      return absl::make_unique<FlagState>(
+          *this, flags_internal::Clone(op_, AlignedBufferValue()), modified,
+          on_command_line, ModificationCount());
     }
   }
   return nullptr;
 }
 
 bool FlagImpl::RestoreState(const FlagState& flag_state) {
-  if (ABSL_PREDICT_TRUE(flag_state.counter_ < 0 && IsUnmodifiedFast())) {
-    return false;
-  }
-
   absl::MutexLock l(DataGuard());
   if (flag_state.counter_ == ModificationCount()) {
     return false;
@@ -658,29 +388,16 @@ bool FlagImpl::RestoreState(const FlagState& flag_state) {
   switch (ValueStorageKind()) {
     case FlagValueStorageKind::kValueAndInitBit:
     case FlagValueStorageKind::kOneWordAtomic:
-      StoreValue(
-          flag_state.counter_ < 0
-              ? static_cast<const void*>(&flag_state.value_.default_value)
-              : static_cast<const void*>(&flag_state.value_.one_word),
-          kProgrammaticChange);
+      StoreValue(&flag_state.value_.one_word);
       break;
     case FlagValueStorageKind::kSequenceLocked:
-    case FlagValueStorageKind::kHeapAllocated:
-      if (flag_state.counter_ < 0) {
-        std::unique_ptr<void, DynValueDeleter> init_value(
-            flags_internal::Alloc(op_), DynValueDeleter{op_});
-        (*flag_state.value_.default_value.gen_func)(init_value.get());
-        StoreValue(init_value.get(), kProgrammaticChange);
-      } else {
-        StoreValue(flag_state.value_.heap_allocated, kProgrammaticChange);
-      }
+    case FlagValueStorageKind::kAlignedBuffer:
+      StoreValue(flag_state.value_.heap_allocated);
       break;
   }
 
-  MuState s = mu_state_.load(std::memory_order_relaxed);
-  s.modified = flag_state.modified_;
-  s.on_command_line = flag_state.on_command_line_;
-  mu_state_.store(s, std::memory_order_relaxed);
+  modified_ = flag_state.modified_;
+  on_command_line_ = flag_state.on_command_line_;
 
   return true;
 }
@@ -694,28 +411,20 @@ StorageT* FlagImpl::OffsetValue() const {
   return reinterpret_cast<StorageT*>(p + offset);
 }
 
+void* FlagImpl::AlignedBufferValue() const {
+  assert(ValueStorageKind() == FlagValueStorageKind::kAlignedBuffer);
+  return OffsetValue<void>();
+}
+
 std::atomic<uint64_t>* FlagImpl::AtomicBufferValue() const {
   assert(ValueStorageKind() == FlagValueStorageKind::kSequenceLocked);
   return OffsetValue<std::atomic<uint64_t>>();
-}
-
-flags_internal::SequenceLock& FlagImpl::SeqLock() const {
-  assert(ValueStorageKind() == FlagValueStorageKind::kSequenceLocked);
-  size_t num_words =
-      flags_internal::AlignUp(Sizeof(op_), sizeof(uint64_t)) / sizeof(uint64_t);
-  return *reinterpret_cast<flags_internal::SequenceLock*>(AtomicBufferValue() +
-                                                          num_words);
 }
 
 std::atomic<int64_t>& FlagImpl::OneWordValue() const {
   assert(ValueStorageKind() == FlagValueStorageKind::kOneWordAtomic ||
          ValueStorageKind() == FlagValueStorageKind::kValueAndInitBit);
   return OffsetValue<FlagOneWordValue>()->value;
-}
-
-std::atomic<MaskedPointer>& FlagImpl::PtrStorage() const {
-  assert(ValueStorageKind() == FlagValueStorageKind::kHeapAllocated);
-  return OffsetValue<FlagMaskedPointerValue>()->value;
 }
 
 // Attempts to parse supplied `value` string using parsing routine in the `flag`
@@ -738,7 +447,7 @@ std::unique_ptr<void, DynValueDeleter> FlagImpl::TryParse(
 }
 
 void FlagImpl::Read(void* dst) const {
-  auto& guard = DataGuard();  // Make sure flag initialized
+  auto* guard = DataGuard();  // Make sure flag initialized
   switch (ValueStorageKind()) {
     case FlagValueStorageKind::kValueAndInitBit:
     case FlagValueStorageKind::kOneWordAtomic: {
@@ -751,17 +460,9 @@ void FlagImpl::Read(void* dst) const {
       ReadSequenceLockedData(dst);
       break;
     }
-    case FlagValueStorageKind::kHeapAllocated: {
+    case FlagValueStorageKind::kAlignedBuffer: {
       absl::MutexLock l(guard);
-      MaskedPointer ptr_value = PtrStorage().load(std::memory_order_acquire);
-
-      flags_internal::CopyConstruct(op_, ptr_value.Ptr(), dst);
-
-      // For unprotected read candidates, mark that the value as has been read.
-      if (ptr_value.IsUnprotectedReadCandidate() && !ptr_value.HasBeenRead()) {
-        ptr_value.MarkAsRead();
-        PtrStorage().store(ptr_value, std::memory_order_release);
-      }
+      flags_internal::CopyConstruct(op_, AlignedBufferValue(), dst);
       break;
     }
   }
@@ -770,14 +471,14 @@ void FlagImpl::Read(void* dst) const {
 int64_t FlagImpl::ReadOneWord() const {
   assert(ValueStorageKind() == FlagValueStorageKind::kOneWordAtomic ||
          ValueStorageKind() == FlagValueStorageKind::kValueAndInitBit);
-  auto& guard = DataGuard();  // Make sure flag initialized
+  auto* guard = DataGuard();  // Make sure flag initialized
   (void)guard;
   return OneWordValue().load(std::memory_order_acquire);
 }
 
 bool FlagImpl::ReadOneBool() const {
   assert(ValueStorageKind() == FlagValueStorageKind::kValueAndInitBit);
-  auto& guard = DataGuard();  // Make sure flag initialized
+  auto* guard = DataGuard();  // Make sure flag initialized
   (void)guard;
   return absl::bit_cast<FlagValueAndInitBit<bool>>(
              OneWordValue().load(std::memory_order_acquire))
@@ -787,13 +488,13 @@ bool FlagImpl::ReadOneBool() const {
 void FlagImpl::ReadSequenceLockedData(void* dst) const {
   size_t size = Sizeof(op_);
   // Attempt to read using the sequence lock.
-  if (ABSL_PREDICT_TRUE(SeqLock().TryRead(dst, AtomicBufferValue(), size))) {
+  if (ABSL_PREDICT_TRUE(seq_lock_.TryRead(dst, AtomicBufferValue(), size))) {
     return;
   }
   // We failed due to contention. Acquire the lock to prevent contention
   // and try again.
   absl::ReaderMutexLock l(DataGuard());
-  bool success = SeqLock().TryRead(dst, AtomicBufferValue(), size);
+  bool success = seq_lock_.TryRead(dst, AtomicBufferValue(), size);
   assert(success);
   static_cast<void>(success);
 }
@@ -812,7 +513,7 @@ void FlagImpl::Write(const void* src) {
     }
   }
 
-  StoreValue(src, kProgrammaticChange);
+  StoreValue(src);
 }
 
 // Sets the value of the flag based on specified string `value`. If the flag
@@ -833,18 +534,16 @@ bool FlagImpl::ParseFrom(absl::string_view value, FlagSettingMode set_mode,
       auto tentative_value = TryParse(value, err);
       if (!tentative_value) return false;
 
-      StoreValue(tentative_value.get(), source);
+      StoreValue(tentative_value.get());
 
       if (source == kCommandLine) {
-        MuState s = mu_state_.load(std::memory_order_relaxed);
-        s.on_command_line = true;
-        mu_state_.store(s, std::memory_order_relaxed);
+        on_command_line_ = true;
       }
       break;
     }
     case SET_FLAG_IF_DEFAULT: {
       // set the flag's value, but only if it hasn't been set by someone else
-      if (mu_state_.load(std::memory_order_relaxed).modified) {
+      if (modified_) {
         // TODO(rogeeff): review and fix this semantic. Currently we do not fail
         // in this case if flag is modified. This is misleading since the flag's
         // value is not updated even though we return true.
@@ -856,30 +555,26 @@ bool FlagImpl::ParseFrom(absl::string_view value, FlagSettingMode set_mode,
       auto tentative_value = TryParse(value, err);
       if (!tentative_value) return false;
 
-      StoreValue(tentative_value.get(), source);
+      StoreValue(tentative_value.get());
       break;
     }
     case SET_FLAGS_DEFAULT: {
       auto tentative_value = TryParse(value, err);
       if (!tentative_value) return false;
 
-      void* new_default = tentative_value.release();
-      void* old_value = SetDynamicDefault(this, new_default);
-      MuState s = mu_state_.load(std::memory_order_relaxed);
-      const bool was_modified = s.modified;
-      if (s.DefaultKind() == FlagDefaultKind::kDynamicValue) {
+      if (DefaultKind() == FlagDefaultKind::kDynamicValue) {
+        void* old_value = default_value_.dynamic_value;
+        default_value_.dynamic_value = tentative_value.release();
         tentative_value.reset(old_value);
       } else {
-        s.default_kind = static_cast<uint8_t>(FlagDefaultKind::kDynamicValue);
-        mu_state_.store(s, std::memory_order_relaxed);
+        default_value_.dynamic_value = tentative_value.release();
+        def_kind_ = static_cast<uint8_t>(FlagDefaultKind::kDynamicValue);
       }
 
-      if (!was_modified) {
+      if (!modified_) {
         // Need to set both default value *and* current, in this case.
-        StoreValue(new_default, source);
-        s = mu_state_.load(std::memory_order_relaxed);
-        s.modified = false;
-        mu_state_.store(s, std::memory_order_relaxed);
+        StoreValue(default_value_.dynamic_value);
+        modified_ = false;
       }
       break;
     }

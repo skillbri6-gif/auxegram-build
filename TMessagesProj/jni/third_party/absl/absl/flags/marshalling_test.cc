@@ -19,12 +19,10 @@
 
 #include <cmath>
 #include <limits>
-#include <optional>
 #include <string>
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "absl/numeric/int128.h"
 
 namespace {
 
@@ -779,7 +777,7 @@ TEST(MarshallingTest, TestVectorOfStringParsing) {
 
 TEST(MarshallingTest, TestOptionalBoolParsing) {
   std::string err;
-  std::optional<bool> value;
+  absl::optional<bool> value;
 
   EXPECT_TRUE(absl::ParseFlag("", &value, &err));
   EXPECT_FALSE(value.has_value());
@@ -799,7 +797,7 @@ TEST(MarshallingTest, TestOptionalBoolParsing) {
 
 TEST(MarshallingTest, TestOptionalIntParsing) {
   std::string err;
-  std::optional<int> value;
+  absl::optional<int> value;
 
   EXPECT_TRUE(absl::ParseFlag("", &value, &err));
   EXPECT_FALSE(value.has_value());
@@ -819,7 +817,7 @@ TEST(MarshallingTest, TestOptionalIntParsing) {
 
 TEST(MarshallingTest, TestOptionalDoubleParsing) {
   std::string err;
-  std::optional<double> value;
+  absl::optional<double> value;
 
   EXPECT_TRUE(absl::ParseFlag("", &value, &err));
   EXPECT_FALSE(value.has_value());
@@ -839,7 +837,7 @@ TEST(MarshallingTest, TestOptionalDoubleParsing) {
 
 TEST(MarshallingTest, TestOptionalStringParsing) {
   std::string err;
-  std::optional<std::string> value;
+  absl::optional<std::string> value;
 
   EXPECT_TRUE(absl::ParseFlag("", &value, &err));
   EXPECT_FALSE(value.has_value());
@@ -1007,18 +1005,6 @@ TEST(MarshallingTest, TestFloatUnparsing) {
   EXPECT_EQ(absl::UnparseFlag(value), "0.0123");
   value = -0.71f;
   EXPECT_EQ(absl::UnparseFlag(value), "-0.71");
-  value = 0.0f;
-  EXPECT_EQ(absl::UnparseFlag(value), "0");
-  value = -0.0f;
-  EXPECT_EQ(absl::UnparseFlag(value), "-0");
-  value = std::nanf("");
-  EXPECT_EQ(absl::UnparseFlag(value), "nan");
-  value = -std::nanf("");
-  EXPECT_EQ(absl::UnparseFlag(value), "nan");
-  value = std::numeric_limits<float>::infinity();
-  EXPECT_EQ(absl::UnparseFlag(value), "inf");
-  value = -std::numeric_limits<float>::infinity();
-  EXPECT_EQ(absl::UnparseFlag(value), "-inf");
 }
 
 // --------------------------------------------------------------------
@@ -1036,16 +1022,10 @@ TEST(MarshallingTest, TestDoubleUnparsing) {
   EXPECT_EQ(absl::UnparseFlag(value), "-0.71");
   value = -0;
   EXPECT_EQ(absl::UnparseFlag(value), "0");
-  value = -0.0;
-  EXPECT_EQ(absl::UnparseFlag(value), "-0");
   value = std::nan("");
-  EXPECT_EQ(absl::UnparseFlag(value), "nan");
-  value = -std::nan("");
   EXPECT_EQ(absl::UnparseFlag(value), "nan");
   value = std::numeric_limits<double>::infinity();
   EXPECT_EQ(absl::UnparseFlag(value), "inf");
-  value = -std::numeric_limits<double>::infinity();
-  EXPECT_EQ(absl::UnparseFlag(value), "-inf");
 }
 
 // --------------------------------------------------------------------
@@ -1061,49 +1041,49 @@ TEST(MarshallingTest, TestStringUnparsing) {
 // --------------------------------------------------------------------
 
 TEST(MarshallingTest, TestOptionalBoolUnparsing) {
-  std::optional<bool> value;
+  absl::optional<bool> value;
 
   EXPECT_EQ(absl::UnparseFlag(value), "");
   value = true;
   EXPECT_EQ(absl::UnparseFlag(value), "true");
   value = false;
   EXPECT_EQ(absl::UnparseFlag(value), "false");
-  value = std::nullopt;
+  value = absl::nullopt;
   EXPECT_EQ(absl::UnparseFlag(value), "");
 }
 
 // --------------------------------------------------------------------
 
 TEST(MarshallingTest, TestOptionalIntUnparsing) {
-  std::optional<int> value;
+  absl::optional<int> value;
 
   EXPECT_EQ(absl::UnparseFlag(value), "");
   value = 0;
   EXPECT_EQ(absl::UnparseFlag(value), "0");
   value = -12;
   EXPECT_EQ(absl::UnparseFlag(value), "-12");
-  value = std::nullopt;
+  value = absl::nullopt;
   EXPECT_EQ(absl::UnparseFlag(value), "");
 }
 
 // --------------------------------------------------------------------
 
 TEST(MarshallingTest, TestOptionalDoubleUnparsing) {
-  std::optional<double> value;
+  absl::optional<double> value;
 
   EXPECT_EQ(absl::UnparseFlag(value), "");
   value = 1.;
   EXPECT_EQ(absl::UnparseFlag(value), "1");
   value = -1.23;
   EXPECT_EQ(absl::UnparseFlag(value), "-1.23");
-  value = std::nullopt;
+  value = absl::nullopt;
   EXPECT_EQ(absl::UnparseFlag(value), "");
 }
 
 // --------------------------------------------------------------------
 
 TEST(MarshallingTest, TestOptionalStringUnparsing) {
-  std::optional<std::string> strvalue;
+  absl::optional<std::string> strvalue;
   EXPECT_EQ(absl::UnparseFlag(strvalue), "");
 
   strvalue = "asdfg";
@@ -1179,11 +1159,6 @@ TEST(MarshallingTest, TestFloatRoundTrip) {
   TestRoundtrip(0.123456e-20f);
   TestRoundtrip(0.1234567e-20f);
   TestRoundtrip(0.12345678e-20f);
-
-  TestRoundtrip(std::numeric_limits<float>::min());
-  TestRoundtrip(std::numeric_limits<float>::max());
-  TestRoundtrip(std::numeric_limits<float>::lowest());
-  TestRoundtrip(std::numeric_limits<float>::denorm_min());
 }
 
 TEST(MarshallingTest, TestDoubleRoundTrip) {
@@ -1240,11 +1215,6 @@ TEST(MarshallingTest, TestDoubleRoundTrip) {
   TestRoundtrip(0.123456789123456e-50);
   TestRoundtrip(0.1234567891234567e-50);
   TestRoundtrip(0.12345678912345678e-50);
-
-  TestRoundtrip(std::numeric_limits<double>::min());
-  TestRoundtrip(std::numeric_limits<double>::max());
-  TestRoundtrip(std::numeric_limits<double>::lowest());
-  TestRoundtrip(std::numeric_limits<double>::denorm_min());
 }
 
 }  // namespace

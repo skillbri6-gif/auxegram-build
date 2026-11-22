@@ -17,13 +17,11 @@
 
 #include <cassert>
 #include <cmath>
-#include <ios>
 #include <istream>
 #include <limits>
 #include <ostream>
 #include <type_traits>
 
-#include "absl/base/config.h"
 #include "absl/random/internal/iostream_state_saver.h"
 #include "absl/random/internal/traits.h"
 #include "absl/random/uniform_real_distribution.h"
@@ -59,8 +57,8 @@ class zipf_distribution {
    public:
     using distribution_type = zipf_distribution;
 
-    // Preconditions: k >= 0, v > 0, q > 1
-    // The preconditions are validated when NDEBUG is not defined via
+    // Preconditions: k > 0, v > 0, q > 1
+    // The precondidtions are validated when NDEBUG is not defined via
     // a pair of assert() directives.
     // If NDEBUG is defined and either or both of these parameters take invalid
     // values, the behavior of the class is undefined.
@@ -154,7 +152,7 @@ zipf_distribution<IntType>::param_type::param_type(
     : k_(k), q_(q), v_(v), one_minus_q_(1 - q) {
   assert(q > 1);
   assert(v > 0);
-  assert(k >= 0);
+  assert(k > 0);
   one_minus_q_inv_ = 1 / one_minus_q_;
 
   // Setup for the ZRI algorithm (pg 17 of the paper).
@@ -223,7 +221,7 @@ zipf_distribution<IntType>::operator()(
     const double v = uniform_double(g);
     const double u = p.hxm_ + v * p.hx0_minus_hxm_;
     const double x = p.hinv(u);
-    k = rint(x);                                   // std::floor(x + 0.5);
+    k = rint(x);              // std::floor(x + 0.5);
     if (k > static_cast<double>(p.k())) continue;  // reject k > max_k
     if (k - x <= p.s_) break;
     const double h = p.h(k + 0.5);
@@ -254,27 +252,16 @@ std::basic_istream<CharT, Traits>& operator>>(
     zipf_distribution<IntType>& x) {        // NOLINT(runtime/references)
   using result_type = typename zipf_distribution<IntType>::result_type;
   using param_type = typename zipf_distribution<IntType>::param_type;
+  using stream_type =
+      typename random_internal::stream_format_type<IntType>::type;
+  stream_type k;
+  double q;
+  double v;
 
   auto saver = random_internal::make_istream_state_saver(is);
-  result_type k = 0;
-  if (!random_internal::read_integral(is, k)) {
-    return is;
-  }
-  const double q = random_internal::read_floating_point<double>(is);
-  if (is.fail()) return is;
-  const double v = random_internal::read_floating_point<double>(is);
-  if (is.fail()) return is;
-
-  if constexpr (std::numeric_limits<result_type>::is_signed) {
-    if (k < result_type{0}) {
-      is.setstate(std::ios_base::failbit);
-      return is;
-    }
-  }
-  if (std::isfinite(q) && q > 1.0 && std::isfinite(v) && v > 0.0) {
-    x.param(param_type(k, q, v));
-  } else {
-    is.setstate(std::ios_base::failbit);
+  is >> k >> q >> v;
+  if (!is.fail()) {
+    x.param(param_type(static_cast<result_type>(k), q, v));
   }
   return is;
 }

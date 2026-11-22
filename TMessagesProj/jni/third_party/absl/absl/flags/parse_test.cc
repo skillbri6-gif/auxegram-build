@@ -25,7 +25,6 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/base/internal/scoped_set_env.h"
-#include "absl/flags/config.h"
 #include "absl/flags/flag.h"
 #include "absl/flags/internal/parse.h"
 #include "absl/flags/internal/usage.h"
@@ -44,31 +43,31 @@
 #define FLAG_MULT(x) F3(x)
 #define TEST_FLAG_HEADER FLAG_HEADER_
 
-#define F(name) ABSL_FLAG(int, name, 0, "")
+#define F(name) ABSL_FLAG(int, name, 0, "");
 
 #define F1(name) \
   F(name##1);    \
   F(name##2);    \
   F(name##3);    \
   F(name##4);    \
-  F(name##5)
+  F(name##5);
 /**/
 #define F2(name) \
   F1(name##1);   \
   F1(name##2);   \
   F1(name##3);   \
   F1(name##4);   \
-  F1(name##5)
+  F1(name##5);
 /**/
 #define F3(name) \
   F2(name##1);   \
   F2(name##2);   \
   F2(name##3);   \
   F2(name##4);   \
-  F2(name##5)
+  F2(name##5);
 /**/
 
-FLAG_MULT(TEST_FLAG_HEADER);
+FLAG_MULT(TEST_FLAG_HEADER)
 
 namespace {
 
@@ -203,17 +202,16 @@ constexpr const char* const ff2_data[] = {
 // temporary directory location. This way we can test inclusion of one flagfile
 // from another flagfile.
 const char* GetFlagfileFlag(const std::vector<FlagfileData>& ffd,
-                            std::string& flagfile_flag,
-                            absl::string_view line_ending = "\n") {
+                            std::string& flagfile_flag) {
   flagfile_flag = "--flagfile=";
   absl::string_view separator;
   for (const auto& flagfile_data : ffd) {
     std::string flagfile_name =
         absl::StrCat(GetTestTempDir(), flagfile_data.file_name);
 
-    std::ofstream flagfile_out(flagfile_name, std::ios::binary);
+    std::ofstream flagfile_out(flagfile_name);
     for (auto line : flagfile_data.file_lines) {
-      flagfile_out << absl::Substitute(line, GetTestTempDir()) << line_ending;
+      flagfile_out << absl::Substitute(line, GetTestTempDir()) << "\n";
     }
 
     absl::StrAppend(&flagfile_flag, separator, flagfile_name);
@@ -244,12 +242,6 @@ using testing::HasSubstr;
 class ParseTest : public testing::Test {
  public:
   ~ParseTest() override { flags::SetFlagsHelpMode(flags::HelpMode::kNone); }
-
-  void SetUp() override {
-#if ABSL_FLAGS_STRIP_NAMES
-    GTEST_SKIP() << "This test requires flag names to be present";
-#endif
-  }
 
  private:
   absl::FlagSaver flag_saver_;
@@ -770,57 +762,6 @@ TEST_F(ParseTest, TestFlagfileInFlagfile) {
 
 // --------------------------------------------------------------------
 
-TEST_F(ParseTest, TestFlagfileWithCrLf) {
-  std::string flagfile_flag;
-
-  constexpr const char* const crlf_basic_data[] = {
-      "# comment",
-      "",
-      "   ",
-      "--int_flag=42",
-      "--string_flag=plain",
-      "--bool_flag",
-      "--udt_flag=AAA",
-  };
-  const char* in_args1[] = {
-      "testbin",
-      GetFlagfileFlag(
-          {{"parse_test.crlf_basic", absl::MakeConstSpan(crlf_basic_data)}},
-          flagfile_flag, "\r\n"),
-  };
-  TestParse(in_args1, 42, 1.1, "plain", true);
-  EXPECT_EQ(absl::GetFlag(FLAGS_udt_flag).value, 10);
-
-  GetFlagfileFlag({{"parse_test.crlf_ff2", absl::MakeConstSpan(ff2_data)},
-                   {"parse_test.crlf_ff1", absl::MakeConstSpan(ff1_data)}},
-                  flagfile_flag, "\r\n");
-
-  constexpr const char* const crlf_include_data[] = {
-      "--flagfile=$0/parse_test.crlf_ff1",
-      "--flagfile=$0/parse_test.crlf_ff2",
-  };
-  const char* in_args2[] = {
-      "testbin",
-      GetFlagfileFlag(
-          {{"parse_test.crlf_include", absl::MakeConstSpan(crlf_include_data)}},
-          flagfile_flag, "\r\n"),
-  };
-  TestParse(in_args2, 100, 0.1, "q2w2  ", false);
-
-  constexpr const char* const crlf_empty_str_data[] = {
-      "--string_flag=",
-  };
-  const char* in_args3[] = {
-      "testbin",
-      GetFlagfileFlag({{"parse_test.crlf_empty_str",
-                        absl::MakeConstSpan(crlf_empty_str_data)}},
-                      flagfile_flag, "\r\n"),
-  };
-  TestParse(in_args3, 100, 0.1, "", false);
-}
-
-// --------------------------------------------------------------------
-
 TEST_F(ParseDeathTest, TestInvalidFlagfiles) {
   std::string flagfile_flag;
 
@@ -860,15 +801,6 @@ TEST_F(ParseDeathTest, TestInvalidFlagfiles) {
   EXPECT_DEATH_IF_SUPPORTED(InvokeParse(in_args3),
                "Flagfile can't contain position arguments or --");
 
-  const char* in_args3_crlf[] = {
-      "testbin",
-      GetFlagfileFlag(
-          {{"parse_test.crlf_ff6", absl::MakeConstSpan(ff6_data)}},
-          flagfile_flag, "\r\n"),
-  };
-  EXPECT_DEATH_IF_SUPPORTED(InvokeParse(in_args3_crlf),
-               "Flagfile can't contain position arguments or --");
-
   const char* in_args4[] = {
       "testbin",
       "--flagfile=invalid_flag_file",
@@ -888,7 +820,7 @@ TEST_F(ParseDeathTest, TestInvalidFlagfiles) {
                       flagfile_flag),
   };
   EXPECT_DEATH_IF_SUPPORTED(InvokeParse(in_args5),
-               "Unexpected line 2 in the flagfile .*");
+               "Unexpected line in the flagfile .*: \\*bin\\*");
 }
 
 // --------------------------------------------------------------------
@@ -1151,66 +1083,5 @@ TEST_F(ParseDeathTest, ExitOnUnrecognizedFlagPrintsHelp) {
 }
 
 // --------------------------------------------------------------------
-
-TEST_F(ParseDeathTest, DisableFlagfileAndEnvParsing) {
-  EXPECT_EXIT(
-      ([]() {
-        absl::DisableFlagfileAndEnvParsing();
-        std::string flagfile_flag;
-        const char* args[] = {
-            "testbin",
-            "--string_flag=abc",
-            GetFlagfileFlag({{"parse_test.ff_disabled", {"--int_flag=123"}}},
-                            flagfile_flag),
-        };
-        InvokeParse(args);
-        exit(absl::GetFlag(FLAGS_int_flag) == 123 ||
-                     absl::GetFlag(FLAGS_string_flag) != "abc"
-                 ? 1
-                 : 0);
-      })(),
-      testing::ExitedWithCode(0),
-      "Skipping expansion of --flagfile as it is disabled");
-
-  EXPECT_EXIT(([]() {
-                absl::DisableFlagfileAndEnvParsing();
-                ScopedSetEnv set_int_flag("FLAGS_int_flag", "123");
-                const char* args[] = {"testbin", "--string_flag=abc",
-                                      "--fromenv=int_flag"};
-                InvokeParse(args);
-                exit(absl::GetFlag(FLAGS_int_flag) == 123 ||
-                             absl::GetFlag(FLAGS_string_flag) != "abc"
-                         ? 1
-                         : 0);
-              })(),
-              testing::ExitedWithCode(0),
-              "Skipping expansion of --fromenv/--tryfromenv as it is disabled");
-
-  EXPECT_EXIT(([]() {
-                absl::DisableFlagfileAndEnvParsing();
-                ScopedSetEnv set_int_flag("FLAGS_int_flag", "123");
-                const char* args[] = {"testbin", "--string_flag=abc",
-                                      "--tryfromenv=int_flag"};
-                InvokeParse(args);
-                exit(absl::GetFlag(FLAGS_int_flag) == 123 ||
-                             absl::GetFlag(FLAGS_string_flag) != "abc"
-                         ? 1
-                         : 0);
-              })(),
-              testing::ExitedWithCode(0),
-              "Skipping expansion of --fromenv/--tryfromenv as it is disabled");
-}
-
-TEST_F(ParseDeathTest, IsIndirectFlagExpansionEnabledWorks) {
-  EXPECT_EXIT(
-      ([]() {
-        if (!absl::flags_internal::IsIndirectFlagExpansionEnabled()) {
-          exit(1);
-        }
-        absl::DisableFlagfileAndEnvParsing();
-        exit(absl::flags_internal::IsIndirectFlagExpansionEnabled() ? 2 : 0);
-      })(),
-      testing::ExitedWithCode(0), "");
-}
 
 }  // namespace

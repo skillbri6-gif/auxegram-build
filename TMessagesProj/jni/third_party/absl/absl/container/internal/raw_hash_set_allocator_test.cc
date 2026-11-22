@@ -25,7 +25,6 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/base/config.h"
-#include "absl/container/internal/container_memory.h"
 #include "absl/container/internal/raw_hash_set.h"
 #include "absl/container/internal/tracked.h"
 
@@ -70,13 +69,13 @@ class CheckedAlloc {
   };
 
   using propagate_on_container_copy_assignment =
-      std::bool_constant<(Spec & kPropagateOnCopy) != 0>;
+      std::integral_constant<bool, (Spec & kPropagateOnCopy) != 0>;
 
   using propagate_on_container_move_assignment =
-      std::bool_constant<(Spec & kPropagateOnMove) != 0>;
+      std::integral_constant<bool, (Spec & kPropagateOnMove) != 0>;
 
   using propagate_on_container_swap =
-      std::bool_constant<(Spec & kPropagateOnSwap) != 0>;
+      std::integral_constant<bool, (Spec & kPropagateOnSwap) != 0>;
 
   CheckedAlloc select_on_container_copy_construction() const {
     if (Spec & kPropagateOnCopy) return *this;
@@ -134,17 +133,13 @@ class CheckedAlloc {
 };
 
 struct Identity {
-  size_t operator()(int32_t v) const { return static_cast<size_t>(v); }
+  int32_t operator()(int32_t v) const { return v; }
 };
 
 struct Policy {
   using slot_type = Tracked<int32_t>;
   using init_type = Tracked<int32_t>;
   using key_type = int32_t;
-
-  using DefaultHash = void;
-  using DefaultEq = void;
-  using DefaultAlloc = void;
 
   template <class allocator_type, class... Args>
   static void construct(allocator_type* alloc, slot_type* slot,
@@ -183,11 +178,6 @@ struct Policy {
   }
 
   static slot_type& element(slot_type* slot) { return *slot; }
-
-  template <class Hash, bool kIsDefault, size_t kSeedShift>
-  static constexpr HashSlotFn get_hash_slot_fn() {
-    return nullptr;
-  }
 };
 
 template <int Spec>
@@ -439,26 +429,14 @@ TEST_F(NoPropagateOnMove, MoveAssignmentWithDifferentAlloc) {
   EXPECT_EQ(0, it->num_copies());
 }
 
-TEST_F(NoPropagateOnMove, MoveAssignmentWithDifferentAllocToNonEmptyTable) {
-  t1.insert(0);
-  Table u(0, a2);
-  for (int32_t i = 1; i <= 16; ++i) u.insert(i);
-  u = std::move(t1);
-  EXPECT_EQ(a2, u.get_allocator());
-  EXPECT_EQ(1, u.size());
-  EXPECT_NE(u.find(0), u.end());
-  EXPECT_EQ(u.find(1), u.end());
-}
-
 TEST_F(PropagateOnAll, Swap) {
-  t1.insert(0);
+  auto it = t1.insert(0).first;
   Table u(0, a2);
   u.swap(t1);
   EXPECT_EQ(a1, u.get_allocator());
   EXPECT_EQ(a2, t1.get_allocator());
   EXPECT_EQ(1, a1.num_allocs());
   EXPECT_EQ(0, a2.num_allocs());
-  auto it = u.begin();
   EXPECT_EQ(0, it->num_moves());
   EXPECT_EQ(0, it->num_copies());
 }

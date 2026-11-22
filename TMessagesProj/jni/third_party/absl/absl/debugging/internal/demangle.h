@@ -15,9 +15,7 @@
 #ifndef ABSL_DEBUGGING_INTERNAL_DEMANGLE_H_
 #define ABSL_DEBUGGING_INTERNAL_DEMANGLE_H_
 
-#include <cstddef>
 #include <string>
-
 #include "absl/base/config.h"
 
 namespace absl {
@@ -57,9 +55,6 @@ namespace debugging_internal {
 // |               |             |   std::allocator<char> >)
 //
 // See the unit test for more examples.
-//
-// Demangle also recognizes Rust mangled names by delegating the parsing of
-// anything that starts with _R to DemangleRustSymbolEncoding (demangle_rust.h).
 //
 // Note: we might want to write demanglers for ABIs other than Itanium
 // C++ ABI in the future.
