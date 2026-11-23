@@ -277,7 +277,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="tg" />
             </intent-filter>
-            <!-- OwpenGram self-hosted link scheme, registered alongside tg:// so
+            <!-- AuxeGram self-hosted link scheme, registered alongside tg:// so
                  owpg://<host>/<rest> links open the app for ANY prefix host (no
                  per-host manifest entry). Handled in LaunchActivity (case "owpg"). -->
             <intent-filter android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:priority="1">

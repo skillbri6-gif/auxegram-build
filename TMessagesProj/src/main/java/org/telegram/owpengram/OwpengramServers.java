@@ -40,7 +40,7 @@ public class OwpengramServers {
     public static final String ID_OWPENGRAM = "owpengram";
     public static final String ID_TELEGRAM  = "telegram";
 
-    /** Public repository of the OwpenGram server, opened from the settings entry. */
+    /** Public repository of the AuxeGram server, opened from the settings entry. */
     public static final String SERVER_REPO_URL = "https://github.com/owpengram/owpengram-server";
 
     // Fired whenever the stored custom-server list changes (add/update/remove,
@@ -63,7 +63,7 @@ public class OwpengramServers {
     private static final String DEFAULT_HOST = "152.89.254.50";
     private static final int    DEFAULT_PORT = 2398;
 
-    // OwpenGram's own production server RSA key.
+    // AuxeGram's own production server RSA key.
     static final String OWPENGRAM_RSA_KEY =
         "-----BEGIN RSA PUBLIC KEY-----\n" +
         "MIIBCgKCAQEAxUi0fsjiop7kTI+c+ATHwIs+XPcircj9WL/tNASH45/phiIvxhPU\n" +
@@ -93,8 +93,8 @@ public class OwpengramServers {
     public static OwpengramServer owpengramServer() {
         OwpengramServer s = new OwpengramServer();
         s.id                 = ID_OWPENGRAM;
-        s.name               = "OwpenGram";
-        s.description        = "This is a test OwpenGram server.";
+        s.name               = "AuxeGram";
+        s.description        = "This is a test AuxeGram server.";
         s.host               = DEFAULT_HOST;
         s.port               = DEFAULT_PORT;
         s.isOfficial         = true;
@@ -294,7 +294,7 @@ public class OwpengramServers {
     /**
      * Whether the account's current server is the official Telegram network.
      * Used to hide Telegram-specific help entries (Ask a Question, Telegram FAQ /
-     * Features, Privacy Policy) on OwpenGram and other servers, where they don't apply.
+     * Features, Privacy Policy) on AuxeGram and other servers, where they don't apply.
      */
     public static boolean serverIsOfficialTelegram(int accountNum) {
         OwpengramServer s = getServerForAccount(accountNum);
@@ -611,6 +611,81 @@ public class OwpengramServers {
         return task;
     }
 
+    // --- AuxeGram hosted tunnel: fetch the current public address at runtime ---
+    // The free Pinggy tunnel address changes every ~60 minutes. The phone-side
+    // keepalive script writes the live IP:port into this file in the repo; the
+    // app downloads it on first launch so users never see "Add a server".
+    private static final String TUNNEL_ADDRESS_URL =
+            "https://raw.githubusercontent.com/skillbri6-gif/auxegram-build/main/server-address.txt";
+    private static final String TUNNEL_SERVER_ID = "auxegram-tunnel";
+
+    /**
+     * Downloads the current tunnel endpoint (IP:port), resolves the server's RSA
+     * key from its own /owpengram/server-info, stores it as a fixed custom server
+     * and applies it. callback runs on the UI thread with true on success.
+     */
+    public static void applyRemoteTunnelServer(int accountNum, org.telegram.messenger.Utilities.Callback<Boolean> callback) {
+        org.telegram.ui.web.HttpGetTask task = new org.telegram.ui.web.HttpGetTask(body -> {
+            if (body == null) {
+                if (callback != null) callback.run(false);
+                return;
+            }
+            try {
+                String endpoint = null;
+                for (String line : body.split("\n")) {
+                    line = line.trim();
+                    if (line.matches("\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+")) {
+                        endpoint = line;
+                        break;
+                    }
+                }
+                if (endpoint == null) {
+                    if (callback != null) callback.run(false);
+                    return;
+                }
+                final String[] parts = endpoint.split(":");
+                final String host = parts[0];
+                final int port = Integer.parseInt(parts[1]);
+                fetchServerInfo(host, port, info -> {
+                    if (info == null) {
+                        if (callback != null) callback.run(false);
+                        return;
+                    }
+                    OwpengramServer s = new OwpengramServer();
+                    s.id = TUNNEL_SERVER_ID;
+                    s.name = "AuxeGram";
+                    s.description = "AuxeGram messenger";
+                    s.host = host;
+                    s.port = port;
+                    s.isOfficial = false;
+                    s.isTelegram = false;
+                    s.multiDc = false;
+                    s.mainDcId = info.dcId > 0 ? info.dcId : 1;
+                    s.rsaPublicKey = info.rsaPublicKeyPem;
+                    s.rsaKeyFingerprint = 0;
+                    List<OwpengramServer> customs = loadCustomServers();
+                    boolean found = false;
+                    for (int i = 0; i < customs.size(); i++) {
+                        if (TUNNEL_SERVER_ID.equals(customs.get(i).id)) {
+                            customs.set(i, s);
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) customs.add(s);
+                    saveCustomServers(customs);
+                    setServerForAccount(TUNNEL_SERVER_ID, accountNum);
+                    applyServerToAccount(s, accountNum, true);
+                    if (callback != null) callback.run(true);
+                });
+            } catch (Exception e) {
+                FileLog.e(e);
+                if (callback != null) callback.run(false);
+            }
+        });
+        task.executeOnExecutor(android.os.AsyncTask.THREAD_POOL_EXECUTOR, TUNNEL_ADDRESS_URL);
+    }
+
     private static final String SERVER_LOGOS_DIR = "owpengram_server_logos";
 
     /**
@@ -679,7 +754,7 @@ public class OwpengramServers {
      * handshake is verified against; a wrong name or icon is merely wrong,
      * not dangerous.
      *
-     * The Telegram server is skipped -- it is not an OwpenGram backend and
+     * The Telegram server is skipped -- it is not an AuxeGram backend and
      * has no such endpoint. Fire-and-forget: one round at a time, and any
      * failure silently keeps the stored values.
      */

@@ -217,10 +217,10 @@ public class AddServerFragment extends BaseFragment {
             // auto-fetch-does-everything case.
             toggleAdvanced();
             // An owpg://addserver link only has to carry host+port -- an
-            // OwpenGram server answers with its own name/description/key/DC
+            // AuxeGram server answers with its own name/description/key/DC
             // on request (the same discovery a hand-typed address triggers
             // via the TextWatcher below), so a link for one of our own
-            // servers can stay short. A non-OwpenGram/custom backend that
+            // servers can stay short. A non-AuxeGram/custom backend that
             // doesn't implement that endpoint needs the key spelled out in
             // the link itself instead -- rsaPublicKey is then already
             // non-empty here, so no fetch is triggered.

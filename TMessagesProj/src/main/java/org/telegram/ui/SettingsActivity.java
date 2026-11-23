@@ -749,7 +749,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         }
 
         // Only show the Premium section (Premium/Stars/TON/Business/Gift) for servers
-        // that implement these features (Telegram). OwpenGram and custom
+        // that implement these features (Telegram). AuxeGram and custom
         // single-servers don't, so hide the whole block there.
         boolean serverPremium = org.telegram.owpengram.OwpengramServers.serverSupportsPremium(currentAccount);
         if (serverPremium && !getMessagesController().premiumFeaturesBlocked()) {
@@ -779,7 +779,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         items.add(UItem.asHeader(getString(R.string.SettingsHelp)));
         // Ask a Question / Telegram FAQ / Telegram Features / Privacy Policy are
         // Telegram-specific. Show them only when the active account is on the
-        // official Telegram network; hide them on OwpenGram and other servers.
+        // official Telegram network; hide them on AuxeGram and other servers.
         boolean officialTelegram = org.telegram.owpengram.OwpengramServers.serverIsOfficialTelegram(currentAccount);
         if (officialTelegram) {
             items.add(SettingCell.Factory.of(17, 0xFFF09F1B, 0xFFE18A11, R.drawable.settings_ask, getString(R.string.AskAQuestion)));
@@ -787,7 +787,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             items.add(SettingCell.Factory.of(23, 0xFFC46EF4, 0xFF9F55DF, R.drawable.settings_features, getString(R.string.TelegramFeatures)));
             items.add(SettingCell.Factory.of(19, 0xFF55CA47, 0xFF27B434, R.drawable.settings_policy, getString(R.string.PrivacyPolicy)));
         }
-        items.add(SettingCell.Factory.of(30, 0xFF6E7B86, 0xFF55606A, R.drawable.github_logo, "OwpenGram"));
+        items.add(SettingCell.Factory.of(30, 0xFF6E7B86, 0xFF55606A, R.drawable.github_logo, "AuxeGram"));
 
         if (SharedSettings.experimentalSettingsAllowed.get()) {
             items.add(UItem.asShadow(null));
@@ -1007,11 +1007,11 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                     break;
             }
             String versionName = pInfo.versionName;
-            // OwpenGram release number from the build script (-POWPENGRAM_BUILD=N);
+            // AuxeGram release number from the build script (-POWPENGRAM_BUILD=N);
             // 0 is a local dev build.
             versionName += BuildVars.OWPENGRAM_BUILD > 0 ? "_O" + BuildVars.OWPENGRAM_BUILD : "_dev";
 
-            return "OwpenGram " + String.format(Locale.US, "v%s (%d)\n%s", versionName, code, abi);
+            return "AuxeGram " + String.format(Locale.US, "v%s (%d)\n%s", versionName, code, abi);
         } catch (Exception e) {
             FileLog.e(e);
         }

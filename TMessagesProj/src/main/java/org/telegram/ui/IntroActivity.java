@@ -156,7 +156,7 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
 
     @Override
     public View createView(Context context) {
-        // Page 1 title is plain text again; the OwpenGram logo is shown as the big
+        // Page 1 title is plain text again; the AuxeGram logo is shown as the big
         // intro image (introLogoView) instead of the Telegram GL animation.
         titles[0] = LocaleController.getString(R.string.Page1Title);
 
@@ -251,12 +251,12 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
         TextureView textureView = new TextureView(context);
         introTextureView = textureView;
         // Hide the GL surface (and its round logo plate) on page 0, so only the
-        // OwpenGram hexagon logo shows there with no round background behind it.
+        // AuxeGram hexagon logo shows there with no round background behind it.
         // It fades in as the user swipes to the feature pages (which keep it).
         textureView.setAlpha(0f);
         frameLayout2.addView(textureView, LayoutHelper.createFrame(ICON_WIDTH_DP, ICON_HEIGHT_DP, Gravity.CENTER));
 
-        // Big OwpenGram logo shown on the first intro page (page 0). The Telegram GL
+        // Big AuxeGram logo shown on the first intro page (page 0). The Telegram GL
         // logo is made transparent (see EGLThread.initGL), so this is the only logo
         // visible there. It fades out as the user swipes to the feature pages.
         introLogoView = new ImageView(context);
@@ -407,7 +407,15 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
                 return;
             }
             startPressed = true;
-            presentFragment(new ServerSelectFragment());
+            // AuxeGram: resolve the live hosted tunnel address automatically.
+            // Users go straight to login; there is no server picker to see.
+            AlertDialog progress = new AlertDialog(getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER);
+            progress.setCanCancel(false);
+            try { showDialog(progress); } catch (Exception ignore) {}
+            OwpengramServers.applyRemoteTunnelServer(UserConfig.selectedAccount, ok -> {
+                try { progress.dismiss(); } catch (Exception ignore) {}
+                presentFragment(new LoginActivity());
+            });
             // Reset so the button works again if the user navigates back from the
             // server picker (ServerSelectFragment is pushed on top, not finishing intro).
             startPressed = false;
@@ -817,7 +825,7 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
             loadTexture(R.drawable.intro_private_door, 19);
             loadTexture(R.drawable.intro_private_screw, 20);
             // Telegram logo (plane + sphere) is rendered transparent: the big intro
-            // logo on page 0 is the OwpenGram image (introLogoView) overlaid instead.
+            // logo on page 0 is the AuxeGram image (introLogoView) overlaid instead.
             loadTexture(v -> Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888), 21);
             loadTexture(v -> Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888), 22);
             loadTexture(telegramMaskProvider, 23);

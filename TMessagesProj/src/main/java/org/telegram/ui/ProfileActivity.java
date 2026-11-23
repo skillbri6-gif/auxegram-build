@@ -10705,7 +10705,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 devicesSectionRow = rowCount++;
                 // Only show the Premium section (Premium/Stars/TON/Business/Gifting)
                 // for servers that actually implement these features (Telegram).
-                // OwpenGram and custom single-servers don't, so hide it.
+                // AuxeGram and custom single-servers don't, so hide it.
                 boolean serverPremium = org.telegram.owpengram.OwpengramServers.serverSupportsPremium(currentAccount);
                 if (serverPremium && !getMessagesController().premiumFeaturesBlocked()) {
                     premiumRow = rowCount++;
@@ -13921,7 +13921,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     } else if (position == policyRow) {
                         textCell.setTextAndIcon(LocaleController.getString(R.string.PrivacyPolicy), R.drawable.msg2_policy, true);
                     } else if (position == owpengramRow) {
-                        textCell.setTextAndIcon("OwpenGram", R.drawable.github_logo, false);
+                        textCell.setTextAndIcon("AuxeGram", R.drawable.github_logo, false);
                     } else if (position == sendLogsRow) {
                         textCell.setText(LocaleController.getString(R.string.DebugSendLogs), true);
                     } else if (position == sendLastLogsRow) {

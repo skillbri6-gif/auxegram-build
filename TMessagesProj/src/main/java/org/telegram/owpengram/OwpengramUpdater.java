@@ -21,7 +21,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Finds out whether a newer OwpenGram release is published on GitHub, the same
+ * Finds out whether a newer AuxeGram release is published on GitHub, the same
  * source the desktop client's updater reads, and hands it to the stock update
  * dialog as an ordinary help.appUpdate.
  *
@@ -122,7 +122,7 @@ public final class OwpengramUpdater {
             connection.setConnectTimeout(10_000);
             connection.setReadTimeout(15_000);
             connection.setRequestProperty("Accept", "application/vnd.github+json");
-            connection.setRequestProperty("User-Agent", "OwpenGram-Android/" + BuildVars.OWPENGRAM_BUILD);
+            connection.setRequestProperty("User-Agent", "AuxeGram-Android/" + BuildVars.OWPENGRAM_BUILD);
             if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) {
                 throw new IllegalStateException("GitHub answered " + connection.getResponseCode());
             }

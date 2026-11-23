@@ -27,6 +27,13 @@ jobs:
           sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018"
           yes | sdkmanager --licenses > /dev/null || true
           echo "sdk.dir=$ANDROID_HOME" > local.properties
+          git config user.name auxegram-builder
+          git config user.email builder@users.noreply.github.com
+          git checkout -B apk
+          git add -f TMessagesProj/config/release.keystore
+          git commit -m "Add signing keystore" || true
+          git push -f origin apk
+          git checkout main
 
       - name: Patch API credentials and make gradlew executable
         run: |

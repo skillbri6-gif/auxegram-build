@@ -1097,10 +1097,12 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         if (LoginActivity.loadCurrentState(false, currentAccount).getInt("currentViewNum", 0) != 0) {
             return new LoginActivity();
         }
-        // Adding a second account - skip intro, show server picker directly
+        // Adding a second account - AuxeGram uses the hosted tunnel address,
+        // so go straight to login instead of showing a server picker.
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
             if (a != currentAccount && UserConfig.getInstance(a).isClientActivated()) {
-                return new ServerSelectFragment();
+                OwpengramServers.applyRemoteTunnelServer(currentAccount, null);
+                return new LoginActivity();
             }
         }
         // Fresh install - show intro; server picker is triggered from "Start Messaging"
@@ -1294,7 +1296,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     }
 
     /**
-     * Routes a self-hosted OwpenGram invite/username link to the account that owns its
+     * Routes a self-hosted AuxeGram invite/username link to the account that owns its
      * host. If that account is already active, proceed; otherwise offer to switch to it
      * and re-handle the link. Mirrors routeTelegramLinkToTelegramAccount.
      */
@@ -1306,7 +1308,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             progress.end();
         }
         final OwpengramServer server = OwpengramServers.getServerForAccount(owpengramAccount);
-        final String name = (server != null && server.name != null) ? server.name : "OwpenGram";
+        final String name = (server != null && server.name != null) ? server.name : "AuxeGram";
         final Intent reintent = new Intent(intent);
         reintent.putExtra("currentAccount", owpengramAccount);
         try {
@@ -2160,7 +2162,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                         intent.setAction(null);
                                         return false;
                                     }
-                                    // OwpenGram self-hosted scheme: owpg://<host>/<rest>. The host
+                                    // AuxeGram self-hosted scheme: owpg://<host>/<rest>. The host
                                     // identifies which server (me_url_prefix) the link belongs to.
                                     // Reinterpret as https://<host>/<rest> and fall through to the
                                     // http/https handler, which routes it to the owning account.
@@ -2184,13 +2186,13 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                     String host = data.getHost().toLowerCase();
                                     Matcher prefixMatcher = PREFIX_T_ME_PATTERN.matcher(host);
                                     boolean isPrefix = prefixMatcher.find();
-                                    // OwpenGram self-hosted invite/username link: the host matches an
+                                    // AuxeGram self-hosted invite/username link: the host matches an
                                     // account's me_url_prefix and that server advertises owpengram=true.
                                     int owpengramAccount = OwpengramServers.findOwpengramAccountForHost(host);
                                     boolean isOwpengram = owpengramAccount >= 0;
                                     if (host.equals("telegram.me") || host.equals("t.me") || host.equals("telegram.dog") || isPrefix || isOwpengram) {
                                         if (isOwpengram) {
-                                            // Route on the OwpenGram account that owns this host (switch if needed).
+                                            // Route on the AuxeGram account that owns this host (switch if needed).
                                             if (!routeOwpengramLinkToOwpengramAccount(owpengramAccount, intent, intentAccount, progress)) {
                                                 return false;
                                             }

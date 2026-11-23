@@ -691,7 +691,7 @@ public class Browser {
             host = host != null ? host.toLowerCase() : "";
         }
 
-        // OwpenGram self-hosted invite/username link: a host matching an OwpenGram
+        // AuxeGram self-hosted invite/username link: a host matching an AuxeGram
         // account's me_url_prefix is internal — rewrite to t.me so the checks below
         // route it into the app instead of opening a browser.
         if (OwpengramServers.findOwpengramAccountForHost(host) >= 0) {
@@ -714,7 +714,7 @@ public class Browser {
         } else if ("tg".equals(uri.getScheme())) {
             return true;
         } else if ("owpg".equals(uri.getScheme())) {
-            // OwpenGram self-hosted scheme — always internal (routed to the owning server).
+            // AuxeGram self-hosted scheme — always internal (routed to the owning server).
             return true;
         } else if ("telegram.dog".equals(host)) {
             String path = uri.getPath();
