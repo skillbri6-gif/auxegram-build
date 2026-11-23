@@ -616,7 +616,7 @@ public class OwpengramServers {
     // keepalive script writes the live IP:port into this file in the repo; the
     // app downloads it on first launch so users never see "Add a server".
     private static final String TUNNEL_ADDRESS_URL =
-            "https://raw.githubusercontent.com/skillbri6-gif/auxegram-build/main/server-address.txt";
+            "https://cdn.jsdelivr.net/gh/skillbri6-gif/auxegram-build@main/server-address.txt";
     private static final String TUNNEL_SERVER_ID = "auxegram-tunnel";
 
     /**
@@ -665,8 +665,11 @@ public class OwpengramServers {
                     s.rsaKeyFingerprint = 0;
                     List<OwpengramServer> customs = loadCustomServers();
                     boolean found = false;
+                    boolean unchanged = false;
                     for (int i = 0; i < customs.size(); i++) {
-                        if (TUNNEL_SERVER_ID.equals(customs.get(i).id)) {
+                        OwpengramServer old = customs.get(i);
+                        if (TUNNEL_SERVER_ID.equals(old.id)) {
+                            unchanged = old.port == port && old.host != null && old.host.equalsIgnoreCase(host);
                             customs.set(i, s);
                             found = true;
                             break;
@@ -675,7 +678,9 @@ public class OwpengramServers {
                     if (!found) customs.add(s);
                     saveCustomServers(customs);
                     setServerForAccount(TUNNEL_SERVER_ID, accountNum);
-                    applyServerToAccount(s, accountNum, true);
+                    // Reset keys only when the endpoint actually changed, so a
+                    // plain app restart keeps the user logged in.
+                    applyServerToAccount(s, accountNum, !unchanged);
                     if (callback != null) callback.run(true);
                 });
             } catch (Exception e) {

@@ -256,6 +256,9 @@ public class ApplicationLoader extends Application {
                 ConnectionsManager.getInstance(a);
             }
             OwpengramServers.applyStoredServerToAccount(a);
+            // AuxeGram: refresh the hosted tunnel address on every app start so
+            // the changing free-tunnel endpoint stays current without a picker.
+            OwpengramServers.applyRemoteTunnelServer(a, null);
             TLRPC.User user = UserConfig.getInstance(a).getCurrentUser();
             if (user != null) {
                 MessagesController.getInstance(a).putUser(user, true);
