@@ -678,9 +678,22 @@ public class OwpengramServers {
                     if (!found) customs.add(s);
                     saveCustomServers(customs);
                     setServerForAccount(TUNNEL_SERVER_ID, accountNum);
-                    // Reset keys only when the endpoint actually changed, so a
-                    // plain app restart keeps the user logged in.
+                    // Apply the fresh endpoint and force active sockets to drop so
+                    // ConnectionsManager reconnects to the new address immediately.
+                    // Only reset auth keys when the endpoint actually changed, so
+                    // an already logged-in user is not logged out on a plain restart.
                     applyServerToAccount(s, accountNum, !unchanged);
+                    try {
+                        org.telegram.tgnet.ConnectionsManager cm = org.telegram.tgnet.ConnectionsManager.getInstance(accountNum);
+                        for (int dcId = 1; dcId <= 5; dcId++) {
+                            cm.discardConnection(dcId, 0);
+                            cm.discardConnection(dcId, 1);
+                            cm.discardConnection(dcId, 2);
+                        }
+                        cm.resumeNetworkMaybe();
+                    } catch (Throwable t) {
+                        FileLog.e(t);
+                    }
                     if (callback != null) callback.run(true);
                 });
             } catch (Exception e) {
