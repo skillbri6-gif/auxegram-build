@@ -616,7 +616,7 @@ public class OwpengramServers {
     // keepalive script writes the live IP:port into this file in the repo; the
     // app downloads it on first launch so users never see "Add a server".
     private static final String TUNNEL_ADDRESS_URL =
-            "https://cdn.jsdelivr.net/gh/skillbri6-gif/auxegram-build@main/server-address.txt";
+            "https://github.com/skillbri6-gif/auxegram-build/raw/refs/heads/main/server-address.txt";
     private static final String TUNNEL_SERVER_ID = "auxegram-tunnel";
 
     /**
