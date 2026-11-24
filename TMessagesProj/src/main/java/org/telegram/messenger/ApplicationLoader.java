@@ -259,6 +259,14 @@ public class ApplicationLoader extends Application {
             // AuxeGram: refresh the hosted tunnel address on every app start so
             // the changing free-tunnel endpoint stays current without a picker.
             OwpengramServers.applyRemoteTunnelServer(a, null);
+            // AuxeGram: clear the stale gift grid cache once so fresh gift art loads.
+            try {
+                android.content.SharedPreferences sp = applicationContext.getSharedPreferences("auxegram_gifts_fix", 0);
+                if (!sp.getBoolean("done", false)) {
+                    org.telegram.ui.Stars.StarsController.clearGiftsCache(a);
+                    sp.edit().putBoolean("done", true).apply();
+                }
+            } catch (Throwable ignore) {}
             TLRPC.User user = UserConfig.getInstance(a).getCurrentUser();
             if (user != null) {
                 MessagesController.getInstance(a).putUser(user, true);

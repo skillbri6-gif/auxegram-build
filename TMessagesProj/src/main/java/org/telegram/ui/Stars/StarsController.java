@@ -2355,6 +2355,20 @@ public class StarsController {
             });
         });
     }
+    /** AuxeGram: wipe the locally cached gift grid so it is re-fetched with fresh art. */
+    public static void clearGiftsCache(int account) {
+        try {
+            MessagesStorage storage = MessagesStorage.getInstance(account);
+            storage.getStorageQueue().postRunnable(() -> {
+                try {
+                    SQLiteDatabase db = storage.getDatabase();
+                    db.executeFast("DELETE FROM star_gifts2").stepThis().dispose();
+                    android.util.Log.d("AuxeGram", "gift cache cleared");
+                } catch (Throwable t) { android.util.Log.e("AuxeGram", "clearGiftsCache", t); }
+            });
+        } catch (Throwable t) { android.util.Log.e("AuxeGram", "clearGiftsCache outer", t); }
+    }
+
     private void saveStarGiftsCached(ArrayList<TL_stars.StarGift> gifts, int hash, long time) {
         final MessagesStorage storage = MessagesStorage.getInstance(currentAccount);
         storage.getStorageQueue().postRunnable(() -> {
