@@ -10116,10 +10116,10 @@
     <string name="EditToDo">Edit</string>
     <string name="AddTasks">Add Tasks</string>
     <string name="MyTON">My TON</string>
-    <string name="GramEarnings">Gram Earnings</string>
-    <string name="GramEarningsTitle">Gram Earnings</string>
-    <string name="GramEarningsText">Your Gram from gifts,\nads and Fragment.</string>
-    <string name="GramEarningsHint">You can withdraw your Grams using Fragment.</string>
+    <string name="GramEarnings">Кристаллы AuxeGram</string>
+    <string name="GramEarningsTitle">Кристаллы AuxeGram</string>
+    <string name="GramEarningsText"></string>
+    <string name="GramEarningsHint"></string>
     <string name="TONBalanceTitle">TON Balance</string>
     <string name="TONBalanceText">Offer TON to submit post suggestions to channels on AuxeGram</string>
     <string name="TodoMenuHint">You are viewing actions for one task.\nYou can switch to actions for the list.</string>
@@ -11533,7 +11533,7 @@
     <string name="WalletNetworkFeeInfo">Every transfer costs a small network fee (**~%1$s**). Telegram covers your first **5** transfers each day.</string>
     <string name="WalletHiddenTransactions">Transactions under %1$s are hidden.</string>
     <string name="WalletOldWalletsBalance">You also have %1$s in old wallets</string>
-    <string name="WalletGramEarningsBalance">You also have %1$s in Gram Earnings</string>
+    <string name="WalletGramEarningsBalance">У вас также %1$s на Кристаллах AuxeGram</string>
     <string name="WalletImportPhraseInfo">Enter the %1$d-word recovery phrase from another wallet you own.</string>
     <string name="WalletImportCurrentPhraseInfo">Enter the %1$d-word recovery phrase of your wallet from another device.</string>
     <string name="WalletPhraseWords_one">%d word</string>

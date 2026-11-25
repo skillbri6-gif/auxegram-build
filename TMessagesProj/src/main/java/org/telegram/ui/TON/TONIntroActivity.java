@@ -98,7 +98,8 @@ public class TONIntroActivity extends GradientHeaderActivity implements Notifica
     private ButtonWithCounterView withdrawButton;
 
     public static boolean allowTopUp() {
-        return ApplicationLoader.isStandaloneBuild() || BuildVars.isBetaApp() || BuildVars.isHuaweiStoreApp();
+        // AuxeGram: no fiat/Fragment top-up in this build.
+        return false;
     }
 
     public TONIntroActivity() {
@@ -208,9 +209,7 @@ public class TONIntroActivity extends GradientHeaderActivity implements Notifica
         iconTextureView = new WalletDiamondView(context, 170);
         iconTextureView.setStarParticlesView(particlesView);
         aboveTitleView.addView(iconTextureView, LayoutHelper.createFrame(170, 170, Gravity.CENTER, 0, 32, 0, 12));
-        configureHeader(getString(R.string.GramEarningsTitle), AndroidUtilities.replaceArrows(AndroidUtilities.replaceSingleTag(getString(R.string.GramEarningsText), () -> {
-            new ExplainStarsSheet(context).show();
-        }), true), aboveTitleView, null);
+        configureHeader(getString(R.string.GramEarningsTitle), "", aboveTitleView, null);
 
         listView.setOverScrollMode(View.OVER_SCROLL_NEVER);
         DefaultItemAnimator itemAnimator = new DefaultItemAnimator();
@@ -308,7 +307,9 @@ public class TONIntroActivity extends GradientHeaderActivity implements Notifica
         });
         twoButtonsLayout.addView(withdrawButton, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, Gravity.CENTER, 1, 0, 0, 0, 0));
 
-        balanceLayout.addView(buttonsLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.CENTER, 20, 6, 20, 4));
+        if (allowTopUp) {
+            balanceLayout.addView(buttonsLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.CENTER, 20, 6, 20, 4));
+        }
 
         oneButtonsLayout.animate().cancel();
         twoButtonsLayout.animate().cancel();
