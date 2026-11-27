@@ -24,6 +24,7 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -89,6 +90,7 @@ import org.telegram.ui.LaunchActivity;
 import org.telegram.ui.ProfileActivity;
 import org.telegram.ui.Stars.StarGiftSheet;
 import org.telegram.ui.Stars.StarsController;
+import org.telegram.ui.TON.TONIntroActivity;
 import org.telegram.ui.Stars.StarsIntroActivity;
 import org.telegram.ui.Stories.recorder.ButtonWithCounterView;
 import org.telegram.ui.Stories.recorder.PreviewView;
@@ -485,6 +487,33 @@ public class SendGiftSheet extends BottomSheetWithRecyclerListView implements No
         button.setRound();
         setButtonText(false);
         buttonContainer.addView(button, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, Gravity.FILL, 10, 10, 10, 10));
+
+        // AuxeGram: crystals shop under the send button
+        final LinearLayout shopView = new LinearLayout(context);
+        shopView.setOrientation(LinearLayout.HORIZONTAL);
+        shopView.setGravity(Gravity.CENTER);
+        shopView.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourcesProvider), 2));
+        buttonContainer.addView(shopView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 44, Gravity.FILL_HORIZONTAL, 10, 0, 10, 6));
+
+        final ImageView shopIcon = new ImageView(context);
+        shopIcon.setImageResource(R.drawable.diamond);
+        shopView.addView(shopIcon, LayoutHelper.createLinear(20, 20, Gravity.CENTER_VERTICAL, 0, 0, 8, 0));
+
+        final TextView shopText = new TextView(context);
+        shopText.setText(getString(R.string.AuxeGramCrystalShop));
+        shopText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+        shopText.setTypeface(AndroidUtilities.bold());
+        shopText.setTextColor(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider));
+        shopView.addView(shopText, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
+
+        shopView.setOnClickListener(v -> {
+            final BaseFragment lastFragment = LaunchActivity.getSafeLastFragment();
+            if (lastFragment == null) return;
+            AndroidUtilities.hideKeyboard(messageEdit);
+            dismiss();
+            lastFragment.presentFragment(new TONIntroActivity());
+        });
+
         button.setOnClickListener(v -> {
             if (button.isLoading()) return;
 
