@@ -50,7 +50,6 @@ import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
-import org.telegram.messenger.Browser;
 import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.messenger.browser.Browser;
@@ -510,7 +509,7 @@ public class SendGiftSheet extends BottomSheetWithRecyclerListView implements No
         shopView.setOnClickListener(v -> {
             AndroidUtilities.hideKeyboard(messageEdit);
             dismiss();
-            Browser.openUrl(context, "http://127.0.0.1:2601/shop?user=" + UserConfig.getInstance(currentAccount).getClientUserId());
+            Browser.openUrl(getContext(), "http://127.0.0.1:2601/shop?user=" + UserConfig.getInstance(currentAccount).getClientUserId());
         });
 
         button.setOnClickListener(v -> {
